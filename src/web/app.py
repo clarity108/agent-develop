@@ -25,8 +25,8 @@ from src.tools import (
 from src.tools.metadata import ToolMetadata
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
-TEMPLATES_DIR = PROJECT_ROOT / "templates"
-STATIC_DIR = PROJECT_ROOT / "static"
+TEMPLATES_DIR = PROJECT_ROOT / "web"
+STATIC_DIR = PROJECT_ROOT / "web" / "src"
 
 app = FastAPI(title="Autonomous Dev Agent", version="0.1.0")
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
