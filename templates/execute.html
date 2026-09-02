@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% block title %}Agent Console — Execution Trace{% endblock %}
+
+{% block content %}
+<div class="layout">
+
+  <aside class="sidebar-left">
+    <div class="panel task-panel">
+      <div class="panel-header">
+        <span class="panel-label">TASK</span>
+        <span class="panel-meta" id="status-indicator">idle</span>
+      </div>
+      <div class="task-input">
+        <form id="task-form">
+          <div class="input-wrapper">
+            <span class="prompt-sign">$</span>
+            <input
+              type="text"
+              id="task-input"
+              name="task"
+              placeholder="describe the task..."
+              autocomplete="off"
+              spellcheck="false"
+            />
+          </div>
+          <button type="submit" class="btn-submit">
+            <span>execute</span>
+            <span class="btn-hint">&rarr;</span>
+          </button>
+        </form>
+        <div class="task-hint">
+          press <kbd>enter</kbd> to submit &nbsp; <kbd>esc</kbd> to clear
+        </div>
+      </div>
+    </div>
+
+    <div class="panel history-panel">
+      <div class="panel-header">
+        <span class="panel-label">SESSIONS</span>
+        <span class="panel-meta" id="session-count">0</span>
+      </div>
+      <div class="history-list" id="history-list">
+        <div class="history-empty">no sessions yet</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="main-area">
+    <div class="trace-header" id="trace-header">
+      <div class="trace-header-left">
+        <div class="title-row">
+          <span class="status-dot" id="status-dot"></span>
+          <span class="trace-title" id="trace-title">// idle</span>
+        </div>
+        <span class="trace-task" id="trace-task"></span>
+      </div>
+      <div class="trace-header-right">
+        <span class="trace-step" id="trace-step">step 0</span>
+        <span class="trace-time" id="trace-time">0.0s</span>
+      </div>
+    </div>
+
+    <div class="trace" id="trace">
+      <div class="trace-empty" id="trace-empty">
+        <div class="trace-empty-inner">
+          <span class="cursor-blink">_</span>
+          <p>submit a task to begin execution</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="trace-footer" id="trace-footer">
+      <div class="footer-left">
+        <span class="footer-label">AGENT</span>
+        <span class="footer-value" id="agent-type">rule-based</span>
+      </div>
+      <div class="footer-center">
+        <span class="cursor-blink" id="footer-cursor">ready</span>
+      </div>
+      <div class="footer-right">
+        <span class="footer-label">TOOLS</span>
+        <span class="footer-value" id="footer-tools-count">7</span>
+      </div>
+    </div>
+  </main>
+
+  <aside class="sidebar-right">
+    <div class="panel tools-panel">
+      <div class="panel-header">
+        <span class="panel-label">AVAILABLE TOOLS</span>
+        <span class="panel-meta">{{ tools|length }}</span>
+      </div>
+      <div class="tools-list">
+        {% for t in tools %}
+        <div class="tool-item">
+          <div class="tool-name">{{ t.name }}</div>
+          <div class="tool-desc">{{ t.description }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="panel stats-panel">
+      <div class="panel-header">
+        <span class="panel-label">LIVE METRICS</span>
+      </div>
+      <div class="stats-grid">
+        <div class="stat-item">
+          <span class="stat-label">STEPS</span>
+          <span class="stat-value" id="stat-steps">0</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">TOOL CALLS</span>
+          <span class="stat-value" id="stat-tools">0</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">ERRORS</span>
+          <span class="stat-value" id="stat-errors">0</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">ELAPSED</span>
+          <span class="stat-value" id="stat-elapsed">0.0s</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel agent-panel">
+      <div class="panel-header">
+        <span class="panel-label">AGENT STATE</span>
+      </div>
+      <div class="agent-state">
+        <div class="state-row">
+          <span class="state-key">model</span>
+          <span class="state-val" id="state-model">rule-based</span>
+        </div>
+        <div class="state-row">
+          <span class="state-key">max_steps</span>
+          <span class="state-val">20</span>
+        </div>
+        <div class="state-row">
+          <span class="state-key">status</span>
+          <span class="state-val" id="state-status">idle</span>
+        </div>
+        <div class="state-row">
+          <span class="state-key">session_mem</span>
+          <span class="state-val">enabled</span>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+</div>
+{% endblock %}

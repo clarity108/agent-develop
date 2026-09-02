@@ -1,6 +1,7 @@
 import pytest
 
-from src.agent.core import DevAgent, RuleBasedDevAgent, AgentResult
+from src.agent.core import DevAgent, RuleBasedDevAgent, AgentResult, Decision
+from src.memory.session import SessionMemory
 from src.tools.file_tools import ToolResult, read_file, write_file
 
 
@@ -73,3 +74,30 @@ class TestRuleBasedDevAgent:
         assert hasattr(result, "task")
         assert hasattr(result, "success")
         assert hasattr(result, "steps")
+
+
+class TestSessionMemoryIntegration:
+    def test_dev_agent_records_tool_calls_in_session_memory(self, tmp_path):
+        target = tmp_path / "out.txt"
+        session = SessionMemory()
+        agent = RuleBasedDevAgent(
+            rules=[
+                {"match": "write", "step": 1, "tool": "write_file",
+                 "args": {"path": str(target), "content": "hello"}},
+                {"match": "write", "step": 2, "answer": "Done."},
+            ],
+            tools={"write_file": write_file},
+            session_memory=session,
+        )
+        agent.run("write a file")
+
+        messages = session.get_messages()
+        roles = [m["role"] for m in messages]
+        assert roles[0] == "user"
+        assert "assistant" in roles
+        assert "tool" in roles
+
+    def test_dev_agent_without_session_memory_still_works(self):
+        agent = DevAgent(max_steps=3)
+        result = agent.run("test")
+        assert result.steps > 0

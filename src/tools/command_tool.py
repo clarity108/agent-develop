@@ -3,8 +3,10 @@ from __future__ import annotations
 import subprocess
 import sys
 from .file_tools import ToolResult
+from .metadata import tool
 
 
+@tool("Executes a shell command and returns its output")
 def execute_command(command: str, timeout: int = 30, cwd: str | None = None) -> ToolResult:
     try:
         shell = sys.platform == "win32"

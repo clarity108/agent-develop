@@ -51,10 +51,16 @@ class DashScopeLLMClient:
             "Content-Type": "application/json",
         }
 
-    def _build_body(self, messages: list[ChatMessage], **extra: Any) -> dict:
+    def _message_to_dict(self, msg) -> dict[str, Any]:
+        d = {"role": msg.role, "content": msg.content}
+        if hasattr(msg, "tool_call_id") and msg.tool_call_id:
+            d["tool_call_id"] = msg.tool_call_id
+        return d
+
+    def _build_body(self, messages, **extra: Any) -> dict:
         body: dict[str, Any] = {
             "model": self.model,
-            "messages": [{"role": m.role, "content": m.content} for m in messages],
+            "messages": [self._message_to_dict(m) for m in messages],
             "temperature": self.temperature,
             "max_tokens": self.max_tokens,
         }
@@ -65,7 +71,7 @@ class DashScopeLLMClient:
         with httpx.Client(timeout=self.timeout) as client:
             return client.post(url, json=body, headers=headers)
 
-    def chat(self, messages: list[ChatMessage]) -> ChatResponse:
+    def chat(self, messages) -> ChatResponse:
         url = f"{self.base_url}/chat/completions"
         headers = self._build_headers()
         body = self._build_body(messages)

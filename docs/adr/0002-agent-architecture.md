@@ -29,8 +29,10 @@ DevAgent (抽象基类)
 - LLMDevAgent 自带 context 回传，解决循环终止问题
 
 ### 负面
-- LLMDevAgent 内部循环与 DevAgent 有重复逻辑（未来可统一）
 - 目前 LLM 输出格式依赖 JSON，需要 prompt engineering
+
+## 状态
+已被 [ADR-0003](0003-unified-agent-loop.md) 替代。ADR-0003 解决了 LLMDevAgent 与 DevAgent 的循环重复问题，使 LLMDevAgent 正式继承自 DevAgent。
 
 ## 相关文件
 - `src/agent/core.py`

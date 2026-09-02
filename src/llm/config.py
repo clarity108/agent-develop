@@ -5,11 +5,32 @@ import re
 from pathlib import Path
 
 import yaml
+from dotenv import load_dotenv
 
 from .client import DashScopeLLMClient
 
 
 _ENV_VAR_PATTERN = re.compile(r"\$\{(\w+)\}")
+
+
+def _load_env_files() -> None:
+    dotenv_path = Path(".env")
+    if dotenv_path.exists():
+        load_dotenv(dotenv_path=dotenv_path)
+        return
+    example_path = Path(".env.example")
+    if example_path.exists():
+        load_dotenv(dotenv_path=example_path)
+
+
+def load_config(path: str) -> dict:
+    _load_env_files()
+    file_path = Path(path)
+    if not file_path.exists():
+        raise FileNotFoundError(f"config file not found: {path}")
+    with open(file_path, encoding="utf-8") as f:
+        raw = yaml.safe_load(f)
+    return _resolve_dict(raw)
 
 
 def _resolve_env_vars(value) -> str:
@@ -30,15 +51,6 @@ def _resolve_dict(obj) -> dict:
     if isinstance(obj, list):
         return [_resolve_dict(item) for item in obj]
     return _resolve_env_vars(obj)
-
-
-def load_config(path: str) -> dict:
-    file_path = Path(path)
-    if not file_path.exists():
-        raise FileNotFoundError(f"config file not found: {path}")
-    with open(file_path, encoding="utf-8") as f:
-        raw = yaml.safe_load(f)
-    return _resolve_dict(raw)
 
 
 def build_client(llm_config: dict) -> DashScopeLLMClient:

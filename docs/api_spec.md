@@ -22,6 +22,27 @@ class ToolResult:
     error: str | None = None
 ```
 
+### Tool Metadata
+
+```python
+@dataclass
+class ParameterSchema:
+    type: str
+    description: str = ""
+    required: bool = False
+
+@dataclass
+class ToolMetadata:
+    name: str
+    description: str
+    parameters: dict[str, ParameterSchema] = field(default_factory=dict)
+```
+
+| Function | Params | Returns | Description |
+|----------|--------|---------|-------------|
+| `@tool(description)` | `description: str` | decorator | 为函数附加 ToolMetadata |
+| `get_tool_metadata(fn)` | `fn: callable` | `ToolMetadata \| None` | 获取函数的工具元数据 |
+
 ## Memory
 
 ### SessionMemory
@@ -40,15 +61,18 @@ class ToolResult:
 ## Agent
 
 ### DevAgent
-- `DevAgent(tools: dict | None, max_steps: int = 20)`
+- `DevAgent(tools: dict | None, max_steps: int = 20, session_memory: SessionMemory | None = None)`
 - `register_tool(name, fn)`
 - `available_tools() -> list[str]`
 - `run(task: str) -> AgentResult`
+- `session_memory` property — 返回注入的 SessionMemory（可为 None）
+- 有 session_memory 时自动记录 user/assistant/tool 消息
 
 ### LLMDevAgent
 - `LLMDevAgent(client: DashScopeLLMClient, tools: dict | None, max_steps: int = 20)`
-- 同上接口，由 LLM 驱动规划决策
-- 历史结果自动作为 context 回传 LLM
+- **继承自 DevAgent**，通过 `_plan()` 接入 LLM
+- 自动创建 SessionMemory，LLM 可看到完整对话历史
+- 与 DevAgent 共享 `run()` 循环
 
 ### AgentResult
 
@@ -61,18 +85,47 @@ class AgentResult:
     final_state: AgentState
 ```
 
+### Decision
+
+```python
+@dataclass
+class Decision:
+    thought: str
+    action: str
+    tool_name: str | None = None
+    tool_args: dict = field(default_factory=dict)
+    answer: str = ""
+```
+
 ## LLM
 
 ### DashScopeLLMClient
 - `DashScopeLLMClient(api_key, model="glm-2.5", base_url=None, temperature=0.7, max_tokens=2048, timeout=60)`
-- `chat(messages: list[ChatMessage]) -> ChatResponse`
+- `chat(messages: list[ChatMessage | AgentMessage]) -> ChatResponse`
+
+### AgentMessage
+
+```python
+@dataclass
+class AgentMessage:
+    role: str          # "system" | "user" | "assistant" | "tool"
+    content: str
+    tool_call_id: str | None = None
+    tool_name: str | None = None
+```
 
 ### LLMPlanner
 - `LLMPlanner(client: DashScopeLLMClient)`
-- `plan(task, step, available_tools, context="") -> _Decision`
+- `plan(task, step, available_tools=None, session_memory=None, context="") -> Decision`
+  - `available_tools` 接受 `dict[name, fn]`（含元数据）或 `list[str]`（仅名称）
+  - `session_memory` 提供时，将完整对话历史发送给 LLM
+
+### build_system_prompt
+- `build_system_prompt(tools: dict[name, fn]) -> str`
+- 根据工具元数据生成包含工具描述的系统提示词
 
 ### Config
-- `load_config(path: str) -> dict` — 支持 `${ENV_VAR}` 替换
+- `load_config(path: str) -> dict` — 支持 `${ENV_VAR}` 替换，自动从 `.env` / `.env.example` 加载
 - `build_client(llm_config: dict) -> DashScopeLLMClient`
 
 ## Harness

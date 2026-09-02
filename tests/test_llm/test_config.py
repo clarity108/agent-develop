@@ -19,10 +19,11 @@ class TestLoadConfig:
         assert config["llm"]["model"] == "qwen-max"
         assert config["llm"]["base_url"] == "https://example.com/v1"
 
-    def test_load_default_config(self):
+    def test_load_default_config(self, monkeypatch):
+        monkeypatch.setenv("DASHSCOPE_API_KEY", "sk-test-default")
         config = load_config("config/default.yaml")
         assert "llm" in config
-        assert "api_key" in config["llm"]
+        assert config["llm"]["api_key"] == "sk-test-default"
 
     def test_load_missing_file_raises(self):
         with pytest.raises(FileNotFoundError):

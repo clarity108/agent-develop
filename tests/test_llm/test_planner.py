@@ -1,8 +1,10 @@
 import json
 import pytest
 
+from src.agent.core import DevAgent
 from src.llm.client import DashScopeLLMClient, ChatMessage, ChatResponse, UsageInfo
-from src.llm.planner import LLMPlanner, LLMDevAgent
+from src.llm.planner import LLMPlanner, LLMDevAgent, build_system_prompt, build_tools_section
+from src.tools.metadata import tool, ParameterSchema
 
 
 class TestLLMPlanner:
@@ -126,3 +128,79 @@ class TestLLMDevAgent:
         agent = LLMDevAgent(client, tools={})
         agent.register_tool("read", lambda **kw: None)
         assert "read" in agent.available_tools()
+
+    def test_llm_dev_agent_is_subclass_of_dev_agent(self):
+        client = DashScopeLLMClient(api_key="test-key", model="test-model")
+        agent = LLMDevAgent(client, tools={})
+        assert isinstance(agent, DevAgent)
+
+    def test_llm_dev_agent_has_session_memory(self):
+        client = DashScopeLLMClient(api_key="test-key", model="test-model")
+        agent = LLMDevAgent(client, tools={})
+        assert agent.session_memory is not None
+
+    def test_session_memory_receives_tool_results(self, tmp_path):
+        from src.tools.file_tools import write_file
+
+        target = tmp_path / "out.txt"
+        step_counter = {"n": 0}
+        client = DashScopeLLMClient(api_key="test-key", model="test-model")
+
+        class FakeResp:
+            status_code = 200
+
+            def json(self):
+                step_counter["n"] += 1
+                if step_counter["n"] == 1:
+                    content = json.dumps({
+                        "thought": "Write",
+                        "action": "use_tool",
+                        "tool_name": "write_file",
+                        "tool_args": {"path": str(target), "content": "hello"},
+                        "answer": "",
+                    })
+                else:
+                    content = json.dumps({
+                        "thought": "Done",
+                        "action": "answer",
+                        "tool_name": None,
+                        "tool_args": {},
+                        "answer": "OK",
+                    })
+                return {
+                    "choices": [{"message": {"role": "assistant", "content": content}}],
+                    "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+                }
+
+        client._send = lambda url, body, headers: FakeResp()
+        agent = LLMDevAgent(client, tools={"write_file": write_file}, max_steps=5)
+        agent.run("write file")
+
+        messages = agent.session_memory.get_messages()
+        roles = [m["role"] for m in messages]
+        assert "user" in roles
+        assert "assistant" in roles
+        assert "tool" in roles
+
+
+class TestBuildSystemPrompt:
+    def test_prompt_contains_tool_descriptions(self):
+        @tool("reads a file")
+        def my_read(path: str):
+            pass
+
+        prompt = build_system_prompt({"my_read": my_read})
+        assert "reads a file" in prompt
+        assert "my_read" in prompt
+
+    def test_prompt_contains_no_tools_message(self):
+        prompt = build_system_prompt({})
+        assert "No tools available" in prompt
+
+    def test_prompt_contains_tool_name_for_undecorated(self):
+        def plain_fn():
+            pass
+
+        prompt = build_system_prompt({"plain_fn": plain_fn})
+        assert "plain_fn" in prompt
+        assert "No description available" in prompt
