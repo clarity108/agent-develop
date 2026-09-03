@@ -54,6 +54,20 @@ class TestRuns:
         r = client.get("/api/runs/00000000")
         assert r.json().get("error") == "run not found"
 
+    def test_cancel_run(self):
+        r = client.post("/api/runs", data={"task": "create a file", "use_llm": "off"})
+        run_id = r.json()["run_id"]
+
+        time.sleep(2)
+
+        r = client.post(f"/api/runs/{run_id}/cancel")
+        data = r.json()
+        assert data["status"] in ("cancelled", "already_done")
+
+    def test_cancel_nonexistent_run(self):
+        r = client.post("/api/runs/00000000/cancel")
+        assert r.json().get("error") == "run not found"
+
     def test_run_produces_events(self):
         r = client.post("/api/runs", data={"task": "create a file", "use_llm": "off"})
         run_id = r.json()["run_id"]

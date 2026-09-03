@@ -52,6 +52,7 @@ class AgentRun:
     task: str
     events: deque = field(default_factory=lambda: deque(maxlen=500))
     done: bool = False
+    cancelled: bool = False
     start_time: float = field(default_factory=time.time)
     final_result: AgentResult | None = None
 
@@ -125,13 +126,14 @@ def _run_agent_in_thread(run: AgentRun, use_llm: bool = True) -> None:
             elif event == "error":
                 run.emit("step_error", {"step": step, "error": args[0]})
 
-        result = agent.run(run.task, on_step=on_step)
+        result = agent.run(run.task, on_step=on_step, cancel_check=lambda: run.cancelled)
 
         run.emit("agent_done", {
-            "success": result.success,
+            "success": result.success if not run.cancelled else False,
             "steps": result.steps,
             "task": run.task,
             "result": result.final_state.result,
+            "cancelled": run.cancelled,
         })
         run.final_result = result
         run.done = True
@@ -220,6 +222,20 @@ async def get_run(run_id: str):
         "run_id": run.run_id,
         "task": run.task,
         "done": run.done,
+        "cancelled": run.cancelled,
         "elapsed": run.elapsed(),
         "events": events,
     }
+
+
+@app.post("/api/runs/{run_id}/cancel")
+async def cancel_run(run_id: str):
+    run = _ACTIVE_RUNS.get(run_id)
+    if not run:
+        return {"error": "run not found"}
+    if run.done:
+        return {"status": "already_done"}
+    run.cancelled = True
+    run.done = True
+    run.emit("cancelled", {})
+    return {"status": "cancelled"}

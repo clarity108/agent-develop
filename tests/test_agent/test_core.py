@@ -27,6 +27,27 @@ class TestDevAgent:
         result = agent.run("do something")
         assert result.steps > 0
 
+    def test_cancel_check_stops_execution(self):
+        checks = [0]
+        def slow_plan(task, step):
+            if step <= 10:
+                return Decision(thought=f"step {step}", action="use_tool",
+                                tool_name="write_file",
+                                tool_args={"path": "f.txt", "content": "x"})
+            return Decision(thought="done", action="answer", answer="ok")
+
+        agent = DevAgent(tools={"write_file": write_file}, max_steps=10)
+        agent._plan = slow_plan  # type: ignore[assignment]
+
+        def cancel_after_two():
+            checks[0] += 1
+            return checks[0] > 2
+
+        result = agent.run("test", cancel_check=cancel_after_two)
+        assert result.success is False
+        assert "Cancelled" in result.final_state.result
+        assert result.steps == 2
+
 
 class TestRuleBasedDevAgent:
     def test_run_with_matching_rule(self, tmp_path):

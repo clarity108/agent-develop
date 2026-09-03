@@ -1,6 +1,8 @@
 (function () {
   "use strict";
 
+  var MAX_OUTPUT_LINES = 30;
+
   var sessions = [];
   var activeRunId = null;
   var eventSource = null;
@@ -40,11 +42,32 @@
     $("#state-status").textContent = s;
     $("#state-status").className = "state-val " + s;
     syncTopBar();
+    var cancelBtn = $("#btn-cancel");
+    if (cancelBtn) cancelBtn.style.display = (s === "running") ? "" : "none";
     var title = $("#trace-title");
     if (title) {
-      title.textContent = s === "idle" ? "// idle" : "// " + s;
+      title.textContent = s === "idle" ? "// idle" : s === "cancelled" ? "// cancelled" : "// " + s;
       title.className = "trace-title" + (s === "running" ? " active" : "");
     }
+  }
+
+  function showFinalAnswer(success, text, cancelled) {
+    var banner = $("#final-answer");
+    var tag = $("#final-answer-tag");
+    var status = $("#final-answer-status");
+    var body = $("#final-answer-body");
+    if (!banner) return;
+    banner.style.display = "block";
+    tag.textContent = cancelled ? "CANCELLED" : (success ? "RESULT" : "ERROR");
+    tag.className = "final-answer-tag" + (cancelled ? " cancelled" : (success ? " success" : " error"));
+    status.textContent = success ? "completed" : (cancelled ? "user stopped" : "failed");
+    body.textContent = text || "";
+    body.className = "final-answer-body" + (success ? " success" : " error");
+  }
+
+  function hideFinalAnswer() {
+    var banner = $("#final-answer");
+    if (banner) banner.style.display = "none";
   }
 
   function appendTraceStep(stepNum, thought) {
@@ -89,7 +112,6 @@
     toolBlock.appendChild(args);
     block.appendChild(toolBlock);
 
-    var toolNameEl = document.querySelector('.tool-item .tool-name[style]');
     document.querySelectorAll(".tool-item").forEach(function (el) {
       if (el.querySelector(".tool-name").textContent === toolName) {
         el.classList.add("active");
@@ -104,12 +126,33 @@
   }
 
   function appendToolResult(block, data) {
+    var text = data.output || (data.error || "");
+    var lines = text.split("\n");
     var resBlock = document.createElement("div");
     resBlock.className = "trace-result-block" + (data.error ? " error" : "");
+
     var tag = data.error ? "ERR" : "OK";
-    resBlock.innerHTML =
-      '<span class="trace-result-tag">[' + tag + ']</span>' +
-      esc((data.output || (data.error || "")).slice(0, 300));
+    var header = document.createElement("div");
+    header.className = "trace-result-header";
+    header.innerHTML = '<span class="trace-result-tag">[' + tag + ']</span>';
+    resBlock.appendChild(header);
+
+    var body = document.createElement("pre");
+    body.className = "trace-result-body";
+    body.textContent = text;
+    resBlock.appendChild(body);
+
+    if (lines.length > MAX_OUTPUT_LINES) {
+      body.style.display = "none";
+      resBlock.classList.add("collapsed");
+      resBlock.title = "click to expand";
+      resBlock.addEventListener("click", function () {
+        resBlock.classList.remove("collapsed");
+        body.style.display = "";
+        $("#trace").scrollTop = $("#trace").scrollHeight;
+      });
+    }
+
     block.appendChild(resBlock);
     $("#trace").scrollTop = $("#trace").scrollHeight;
   }
@@ -127,8 +170,14 @@
     block.classList.add("step-error");
     var resBlock = document.createElement("div");
     resBlock.className = "trace-result-block error";
-    resBlock.innerHTML = '<span class="trace-result-tag">[ERR]</span>' + esc(error);
+    resBlock.innerHTML =
+      '<span class="trace-result-tag">[ERR]</span>' + esc(error);
     block.appendChild(resBlock);
+  }
+
+  async function cancelRun() {
+    if (!activeRunId) return;
+    await fetch("/api/runs/" + activeRunId + "/cancel", { method: "POST" });
   }
 
   function connectStream(runId) {
@@ -150,8 +199,6 @@
       if (msg.type === "done") {
         eventSource.close();
         eventSource = null;
-        setStatus("idle");
-        $("#footer-cursor").textContent = "ready";
         return;
       }
 
@@ -163,7 +210,7 @@
 
       if (msg.type === "step_thought") {
         stats.steps = Math.max(stats.steps, msg.data.step);
-        var block = appendTraceStep(msg.data.step, msg.data.thought);
+        appendTraceStep(msg.data.step, msg.data.thought);
         updateStats();
         return;
       }
@@ -199,26 +246,37 @@
       }
 
       if (msg.type === "agent_done") {
-        setStatus(msg.data.success ? "done" : "failed");
-        $("#footer-cursor").textContent = msg.data.success ? "completed" : "failed";
+        var cancelled = msg.data.cancelled;
+        setStatus(cancelled ? "cancelled" : (msg.data.success ? "done" : "failed"));
+        $("#footer-cursor").textContent = cancelled ? "stopped" : (msg.data.success ? "completed" : "failed");
+        showFinalAnswer(msg.data.success && !cancelled, msg.data.result, cancelled);
+
         var lastBlock = document.querySelector(".trace-step-block:last-child");
         if (lastBlock && msg.data.success) lastBlock.classList.add("step-final");
-        if (lastBlock && !msg.data.success) lastBlock.classList.add("step-error");
+        if (lastBlock && !msg.data.success && !cancelled) lastBlock.classList.add("step-error");
 
         sessions.unshift({
           id: activeRunId,
           task: msg.data.task || "task",
-          success: msg.data.success,
+          success: msg.data.success && !cancelled,
           steps: msg.data.steps,
+          cancelled: cancelled,
           time: performance.now(),
         });
         updateHistory();
         return;
       }
 
+      if (msg.type === "cancelled") {
+        setStatus("cancelled");
+        $("#footer-cursor").textContent = "stopped";
+        return;
+      }
+
       if (msg.type === "agent_error") {
         setStatus("failed");
         $("#footer-cursor").textContent = "error";
+        showFinalAnswer(false, msg.data.error, false);
         var trace = $("#trace");
         var empty = $("#trace-empty");
         if (empty) empty.style.display = "none";
@@ -254,6 +312,7 @@
     document.querySelectorAll(".tool-item").forEach(function (el) {
       el.classList.remove("active");
     });
+    hideFinalAnswer();
   }
 
   async function submitTask(task) {
@@ -292,10 +351,11 @@
     list.innerHTML = "";
     sessions.forEach(function (s) {
       var item = document.createElement("div");
-      item.className = "history-item";
+      var statusLabel = s.cancelled ? "stopped" : (s.success ? "ok" : "fail");
+      item.className = "history-item" + (s.cancelled ? " cancelled" : "");
       item.innerHTML =
         '<div class="h-task">' + esc(s.task.slice(0, 30)) + "</div>" +
-        '<div class="h-meta">' + (s.success ? "ok" : "fail") +
+        '<div class="h-meta">' + statusLabel +
         " · " + s.steps + " steps</div>";
       item.addEventListener("click", function () {
         loadRun(s.id);
@@ -312,13 +372,14 @@
     resetStats();
     clearTrace();
     $("#trace-task").textContent = data.task;
-    setStatus(data.done ? "done" : "running");
+    var cancelled = data.cancelled;
+    setStatus(cancelled ? "cancelled" : (data.done ? "done" : "running"));
 
     data.events.forEach(function (ev) {
       var d = ev.data;
       if (ev.type === "step_thought") {
         stats.steps = Math.max(stats.steps, d.step);
-        var block = appendTraceStep(d.step, d.thought);
+        appendTraceStep(d.step, d.thought);
       } else if (ev.type === "tool_call") {
         stats.toolCalls++;
         var el = document.querySelector('[data-step="' + d.step + '"]');
@@ -331,9 +392,10 @@
         var el3 = document.querySelector('[data-step="' + d.step + '"]');
         if (el3 && d.answer) appendAnswer(el3, d.answer);
       } else if (ev.type === "agent_done") {
+        showFinalAnswer(d.success && !cancelled, d.result, cancelled);
         var lastBlock = document.querySelector(".trace-step-block:last-child");
         if (lastBlock && d.success) lastBlock.classList.add("step-final");
-        if (lastBlock && !d.success) lastBlock.classList.add("step-error");
+        if (lastBlock && !d.success && !cancelled) lastBlock.classList.add("step-error");
       }
     });
     updateStats(data.elapsed || 0);
@@ -355,6 +417,13 @@
         e.target.blur();
       }
     });
+
+    var cancelBtn = $("#btn-cancel");
+    if (cancelBtn) {
+      cancelBtn.addEventListener("click", function () {
+        cancelRun();
+      });
+    }
 
     $("#use-llm").addEventListener("change", function () {
       $("#mode-text").textContent = this.checked ? "glm-5.2" : "rule-based";

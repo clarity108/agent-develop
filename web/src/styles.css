@@ -563,11 +563,26 @@ html, body {
   padding: var(--s1) var(--s2);
   font-size: 11px;
   color: var(--ink-dim);
-  max-height: 80px;
-  overflow-y: auto;
   line-height: 1.4;
   white-space: pre-wrap;
   word-break: break-all;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.trace-result-header {
+  margin-bottom: 2px;
+}
+
+.trace-result-body {
+  display: block;
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: inherit;
+  overflow-wrap: anywhere;
 }
 
 .trace-result-block.error {
@@ -765,6 +780,92 @@ html, body {
 /* ============================================================
    RESPONSIVE
    ============================================================ */
+
+/* CANCEL BUTTON */
+.btn-cancel {
+  background: transparent;
+  color: var(--error);
+  border: 1px solid var(--error);
+  padding: 2px var(--s2);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: background 0.15s;
+  margin-left: var(--s2);
+}
+
+.btn-cancel:hover {
+  background: var(--error);
+  color: var(--bg);
+}
+
+.btn-cancel:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* FINAL ANSWER BANNER */
+.final-answer {
+  border-top: 1px solid var(--accent);
+  background: rgba(212, 160, 48, 0.06);
+  padding: var(--s3) var(--s4);
+  max-height: 200px;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+.final-answer-header {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin-bottom: var(--s1);
+}
+
+.final-answer-tag {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: 0.08em;
+}
+
+.final-answer-tag.error { color: var(--error); }
+.final-answer-tag.cancelled { color: var(--ink-mute); }
+
+.final-answer-status {
+  font-size: 10px;
+  color: var(--ink-dim);
+}
+
+.final-answer-body {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink);
+  margin: 0;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.final-answer-body.success { color: var(--success); }
+.final-answer-body.error { color: var(--error); }
+
+/* COLLAPSIBLE TOOL OUTPUT */
+.trace-result-block.collapsed {
+  cursor: pointer;
+}
+
+.trace-result-block.collapsed .trace-result-body {
+  display: none;
+}
+
+.trace-result-block.collapsed::after {
+  content: ' ⌄ N lines collapsed';
+  font-size: 10px;
+  color: var(--ink-mute);
+}
 
 @media (max-width: 1100px) {
   .layout {

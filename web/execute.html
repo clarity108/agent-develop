@@ -75,6 +75,9 @@
       <div class="trace-header-right">
         <span class="trace-step" id="trace-step">step 0</span>
         <span class="trace-time" id="trace-time">0.0s</span>
+        <button class="btn-cancel" id="btn-cancel" style="display:none">
+          <span>cancel</span>
+        </button>
       </div>
     </div>
 
@@ -87,7 +90,15 @@
       </div>
     </div>
 
-    <div class="trace-footer" id="trace-footer">
+    <div class="final-answer" id="final-answer" style="display:none">
+        <div class="final-answer-header">
+          <span class="final-answer-tag" id="final-answer-tag">RESULT</span>
+          <span class="final-answer-status" id="final-answer-status"></span>
+        </div>
+        <pre class="final-answer-body" id="final-answer-body"></pre>
+      </div>
+
+      <div class="trace-footer" id="trace-footer">
       <div class="footer-left">
         <span class="footer-label">AGENT</span>
         <span class="footer-value" id="agent-type">rule-based</span>

@@ -63,7 +63,7 @@ class DevAgent:
             answer="No planning strategy available.",
         )
 
-    def run(self, task: str, on_step=None) -> AgentResult:
+    def run(self, task: str, on_step=None, cancel_check=None) -> AgentResult:
         self._state = AgentState(max_steps=self._max_steps)
         self._state.thought = f"Starting task: {task}"
 
@@ -71,6 +71,10 @@ class DevAgent:
             self._session_memory.add("user", task)
 
         for step in range(1, self._max_steps + 1):
+            if cancel_check and cancel_check():
+                self._state.result = "Cancelled by user"
+                self._state.done = True
+                break
             self._state.step = step
             decision = self._plan(task, step)
             self._state.thought = decision.thought
@@ -120,6 +124,7 @@ class DevAgent:
                 self._state.done
                 and "ERROR" not in self._state.result
                 and "unknown tool" not in self._state.result
+                and "Cancelled" not in self._state.result
             ),
             steps=self._state.step,
             final_state=self._state,
