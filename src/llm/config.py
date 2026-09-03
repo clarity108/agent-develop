@@ -14,20 +14,25 @@ _ENV_VAR_PATTERN = re.compile(r"\$\{(\w+)\}")
 
 
 def _load_env_files() -> None:
-    dotenv_path = Path(".env")
-    if dotenv_path.exists():
-        load_dotenv(dotenv_path=dotenv_path)
-        return
-    example_path = Path(".env.example")
-    if example_path.exists():
-        load_dotenv(dotenv_path=example_path)
+    for name in (".env", ".env.example"):
+        for base in (Path.cwd(), _PROJECT_ROOT):
+            p = base / name
+            if p.exists():
+                load_dotenv(dotenv_path=p)
+                return
 
+
+_PROJECT_ROOT = Path(__file__).parent.parent.parent
 
 def load_config(path: str) -> dict:
     _load_env_files()
     file_path = Path(path)
     if not file_path.exists():
-        raise FileNotFoundError(f"config file not found: {path}")
+        resolved = _PROJECT_ROOT / file_path
+        if resolved.exists():
+            file_path = resolved
+        else:
+            raise FileNotFoundError(f"config file not found: {path}")
     with open(file_path, encoding="utf-8") as f:
         raw = yaml.safe_load(f)
     return _resolve_dict(raw)
