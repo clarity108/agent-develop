@@ -39,3 +39,6 @@ select = ["E", "F", "W", "I", "N", "UP", "B"]
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.backends._legacy:_Backend"
+
+[project.scripts]
+devagent = "src.main:main"

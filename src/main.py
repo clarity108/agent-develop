@@ -14,6 +14,11 @@ from src.tools import (
 )
 from src.loop.feedback import FeedbackLoop, PytestRunner
 
+try:
+    import uvicorn
+except ImportError:
+    uvicorn = None
+
 
 def build_llm_agent():
     config = load_config("config/default.yaml")
@@ -102,7 +107,18 @@ def main():
     parser.add_argument("--cwd", help="Working directory for tools")
     parser.add_argument("--rule", action="store_true", help="Use rule-based agent instead of LLM")
     parser.add_argument("--test", action="store_true", help="Run agent then pytest")
+    parser.add_argument("--serve", action="store_true", help="Start the web console (uvicorn)")
+    parser.add_argument("--host", default="127.0.0.1", help="Web server host (--serve)")
+    parser.add_argument("--port", type=int, default=8000, help="Web server port (--serve)")
     args = parser.parse_args()
+
+    if args.serve:
+        if uvicorn is None:
+            print("uvicorn not installed. Run: pip install uvicorn[standard]")
+            sys.exit(1)
+        print(f"Web console: http://{args.host}:{args.port}")
+        uvicorn.run("src.web.app:app", host=args.host, port=args.port)
+        return
 
     if args.test:
         run_agent(args.task, cwd=args.cwd, use_llm=not args.rule)
