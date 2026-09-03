@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import AsyncGenerator
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -31,6 +31,10 @@ STATIC_DIR = PROJECT_ROOT / "web" / "src"
 app = FastAPI(title="Autonomous Dev Agent", version="0.1.0")
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    return Response(content="", media_type="image/x-icon")
 
 _ACTIVE_RUNS: dict[str, "AgentRun"] = {}
 
