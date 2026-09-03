@@ -806,6 +806,25 @@ html, body {
   cursor: not-allowed;
 }
 
+/* CLEAR HISTORY BUTTON */
+.btn-clear-history {
+  background: transparent;
+  color: var(--ink-mute);
+  border: 1px solid var(--hairline-2);
+  padding: 1px var(--s2);
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  margin-left: auto;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.btn-clear-history:hover {
+  color: var(--error);
+  border-color: var(--error);
+}
+
 /* FINAL ANSWER BANNER */
 .final-answer {
   border-top: 1px solid var(--accent);

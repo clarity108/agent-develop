@@ -3,7 +3,6 @@
 
   var MAX_OUTPUT_LINES = 30;
 
-  var sessions = [];
   var activeRunId = null;
   var eventSource = null;
   var stats = { steps: 0, toolCalls: 0, errors: 0 };
@@ -255,15 +254,7 @@
         if (lastBlock && msg.data.success) lastBlock.classList.add("step-final");
         if (lastBlock && !msg.data.success && !cancelled) lastBlock.classList.add("step-error");
 
-        sessions.unshift({
-          id: activeRunId,
-          task: msg.data.task || "task",
-          success: msg.data.success && !cancelled,
-          steps: msg.data.steps,
-          cancelled: cancelled,
-          time: performance.now(),
-        });
-        updateHistory();
+        refreshHistory();
         return;
       }
 
@@ -341,27 +332,47 @@
     }
   }
 
-  function updateHistory() {
-    $("#session-count").textContent = sessions.length;
+  function renderHistory(rows) {
+    $("#session-count").textContent = rows.length;
     var list = $("#history-list");
-    if (sessions.length === 0) {
+    if (rows.length === 0) {
       list.innerHTML = '<div class="history-empty">no sessions yet</div>';
       return;
     }
     list.innerHTML = "";
-    sessions.forEach(function (s) {
+    rows.forEach(function (s) {
       var item = document.createElement("div");
       var statusLabel = s.cancelled ? "stopped" : (s.success ? "ok" : "fail");
       item.className = "history-item" + (s.cancelled ? " cancelled" : "");
+      var elapsed = (s.elapsed || 0).toFixed(1) + "s";
+      var model = s.use_llm ? "LLM" : "rule";
       item.innerHTML =
         '<div class="h-task">' + esc(s.task.slice(0, 30)) + "</div>" +
         '<div class="h-meta">' + statusLabel +
-        " · " + s.steps + " steps</div>";
+        " · " + s.steps + " steps · " + elapsed + " · " + model + "</div>";
       item.addEventListener("click", function () {
-        loadRun(s.id);
+        loadRun(s.run_id);
       });
       list.appendChild(item);
     });
+  }
+
+  async function refreshHistory() {
+    try {
+      var res = await fetch("/api/history");
+      if (!res.ok) return;
+      var data = await res.json();
+      renderHistory(Array.isArray(data) ? data : []);
+    } catch (e) {
+      renderHistory([]);
+    }
+  }
+
+  async function clearHistory() {
+    try {
+      await fetch("/api/history", { method: "DELETE" });
+      refreshHistory();
+    } catch (e) {}
   }
 
   async function loadRun(runId) {
@@ -425,13 +436,20 @@
       });
     }
 
+    var clearHistoryBtn = $("#btn-clear-history");
+    if (clearHistoryBtn) {
+      clearHistoryBtn.addEventListener("click", function () {
+        clearHistory();
+      });
+    }
+
     $("#use-llm").addEventListener("change", function () {
       $("#mode-text").textContent = this.checked ? "glm-5.2" : "rule-based";
       $("#state-model").textContent = this.checked ? "glm-5.2" : "rule-based";
       $("#agent-type").textContent = this.checked ? "LLM" : "rule-based";
     });
 
-    updateHistory();
+    refreshHistory();
     updateStats(0);
   });
 

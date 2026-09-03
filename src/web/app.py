@@ -23,6 +23,7 @@ from src.tools import (
     get_tool_metadata, tool,
 )
 from src.tools.metadata import ToolMetadata
+from src.web.storage import init_db, save_run, list_runs, delete_all_runs
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 TEMPLATES_DIR = PROJECT_ROOT / "web"
@@ -31,6 +32,7 @@ STATIC_DIR = PROJECT_ROOT / "web" / "src"
 app = FastAPI(title="Autonomous Dev Agent", version="0.1.0")
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+init_db()
 
 @app.get("/favicon.ico", include_in_schema=False)
 def favicon():
@@ -135,11 +137,29 @@ def _run_agent_in_thread(run: AgentRun, use_llm: bool = True) -> None:
             "result": result.final_state.result,
             "cancelled": run.cancelled,
         })
+        save_run(
+            run_id=run.run_id,
+            task=run.task,
+            use_llm=use_llm,
+            success=result.success and not run.cancelled,
+            steps=result.steps,
+            elapsed=run.elapsed(),
+            cancelled=run.cancelled,
+        )
         run.final_result = result
         run.done = True
     except Exception as e:
         run.emit("agent_error", {"error": str(e)})
         run.done = True
+        save_run(
+            run_id=run.run_id,
+            task=run.task,
+            use_llm=use_llm,
+            success=False,
+            steps=0,
+            elapsed=run.elapsed(),
+            cancelled=False,
+        )
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -239,3 +259,14 @@ async def cancel_run(run_id: str):
     run.done = True
     run.emit("cancelled", {})
     return {"status": "cancelled"}
+
+
+@app.get("/api/history")
+async def get_history():
+    return list_runs()
+
+
+@app.delete("/api/history")
+async def clear_history():
+    count = delete_all_runs()
+    return {"deleted": count}

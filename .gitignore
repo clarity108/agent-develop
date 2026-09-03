@@ -12,3 +12,11 @@ build/
 venv/
 .env
 .DS_Store
+agentenv/
+*.db
+.idea/
+output.txt
+hello.py
+f.txt
+f1.txt
+f2.txt
