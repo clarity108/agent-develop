@@ -143,6 +143,10 @@ class RuleBasedPlanner:
     def __init__(self, rules: list[dict] | None = None):
         self._rules = rules or []
 
+    @property
+    def rules(self) -> list[dict]:
+        return self._rules
+
     def plan(self, task: str, step: int) -> Decision:
         for rule in self._rules:
             if rule.get("match") in task.lower() and rule.get("step", step) == step:
@@ -176,6 +180,10 @@ class RuleBasedDevAgent(DevAgent):
     ):
         super().__init__(tools=tools, max_steps=max_steps, session_memory=session_memory)
         self._planner = RuleBasedPlanner(rules or [])
+
+    @property
+    def rules(self) -> list[dict]:
+        return self._planner.rules
 
     def _plan(self, task: str, step: int) -> Decision:
         return self._planner.plan(task, step)

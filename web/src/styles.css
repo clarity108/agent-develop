@@ -886,6 +886,33 @@ html, body {
   color: var(--ink-mute);
 }
 
+/* ============================================================
+   MODE HINT — shows supported task patterns
+   ============================================================ */
+
+.mode-hint {
+  padding: var(--s2) var(--s3);
+  border-top: 1px solid var(--hairline);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mode-hint-label {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  color: var(--ink-mute);
+  text-transform: uppercase;
+}
+
+.mode-hint-text {
+  font-size: 11px;
+  color: var(--accent-2);
+  line-height: 1.4;
+  word-break: break-word;
+}
+
 @media (max-width: 1100px) {
   .layout {
     grid-template-columns: 1fr;

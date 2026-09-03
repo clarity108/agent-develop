@@ -412,7 +412,27 @@
     updateStats(data.elapsed || 0);
   }
 
-  document.addEventListener("DOMContentLoaded", function () {
+  var ruleMatches = [];
+try {
+  ruleMatches = JSON.parse(document.getElementById("rule-matches").textContent);
+} catch (_) {}
+
+function updateModeHint(useLlm) {
+  var label = $("#mode-hint-label");
+  var text = $("#mode-hint-text");
+  if (!label || !text) return;
+  if (useLlm) {
+    label.textContent = "free-form";
+    text.textContent = "describe any task";
+  } else {
+    label.textContent = "rule-based";
+    text.textContent = ruleMatches.length > 0
+      ? 'try: "' + ruleMatches.join('", "') + '"'
+      : "no rules configured";
+  }
+}
+
+document.addEventListener("DOMContentLoaded", function () {
     $("#task-form").addEventListener("submit", function (e) {
       e.preventDefault();
       var input = $("#task-input");
@@ -447,8 +467,10 @@
       $("#mode-text").textContent = this.checked ? "glm-5.2" : "rule-based";
       $("#state-model").textContent = this.checked ? "glm-5.2" : "rule-based";
       $("#agent-type").textContent = this.checked ? "LLM" : "rule-based";
+      updateModeHint(this.checked);
     });
 
+    updateModeHint($("#use-llm").checked);
     refreshHistory();
     updateStats(0);
   });

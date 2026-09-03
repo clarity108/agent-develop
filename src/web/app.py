@@ -175,10 +175,14 @@ async def index(request: Request):
             "name": meta.name if meta else name,
             "description": meta.description if meta else "No description available.",
         })
+
+    _rules = _build_agent(False).rules
+    rule_matches = sorted({r.get("match", "") for r in _rules if r.get("match")})
+
     return templates.TemplateResponse(
         request,
         "execute.html",
-        {"tools": tools_list},
+        {"tools": tools_list, "rule_matches": rule_matches},
     )
 
 
