@@ -84,107 +84,52 @@ def _build_agent(use_llm: bool) -> DevAgent:
     )
 
 
-def _run_agent_in_thread(run: AgentRun) -> None:
+def _run_agent_in_thread(run: AgentRun, use_llm: bool = True) -> None:
     try:
-        agent = _build_agent(False)
-        run.emit("agent_start", {"task": run.task, "tools": agent.available_tools()})
+        agent = _build_agent(use_llm)
+        run.emit("agent_start", {"task": run.task, "tools": agent.available_tools(), "use_llm": use_llm})
 
-        original_run = agent.run
-
-        def instrumented_run(task: str):
-            run.emit("agent_start", {"task": task, "tools": agent.available_tools()})
-            state = agent._state
-            max_steps = agent._max_steps
-
-            if agent.session_memory:
-                agent.session_memory.add("user", task)
-
-            result = None
-            for step in range(1, max_steps + 1):
-                state.step = step
-                decision = agent._plan(task, step)
-                state.thought = decision.thought
-                state.action = decision.action
-
+        def on_step(event: str, step: int, *args):
+            if event == "decision":
+                decision = args[0]
                 run.emit("step_thought", {
                     "step": step,
                     "thought": decision.thought,
                     "action": decision.action,
-                })
-
-                if decision.tool_name is None:
-                    state.result = decision.answer
-                    state.done = True
-                    if agent.session_memory:
-                        agent.session_memory.add("assistant", decision.answer)
-                    run.emit("step_end", {"step": step, "answer": decision.answer})
-                    result = type("R", (), {
-                        "task": task,
-                        "success": True,
-                        "steps": step,
-                        "final_state": state,
-                    })()
-                    break
-
-                if decision.tool_name not in agent._tools:
-                    state.result = f"unknown tool: {decision.tool_name}"
-                    state.done = True
-                    run.emit("step_error", {
-                        "step": step,
-                        "error": f"unknown tool: {decision.tool_name}",
-                    })
-                    result = type("R", (), {
-                        "task": task,
-                        "success": False,
-                        "steps": step,
-                        "final_state": state,
-                    })()
-                    break
-
-                run.emit("tool_call", {
-                    "step": step,
                     "tool_name": decision.tool_name,
                     "tool_args": decision.tool_args,
-                    "thought": decision.thought,
                 })
-
-                tool_result = agent._tools[decision.tool_name](**decision.tool_args)
-                state.result = tool_result.output
-                if not tool_result.success and tool_result.error:
-                    state.result += f"\nERROR: {tool_result.error}"
-
-                if agent.session_memory:
-                    agent.session_memory.add(
-                        "assistant", decision.thought,
-                        metadata={"tool_name": decision.tool_name},
-                    )
-                    status = "success" if tool_result.success else f"error: {tool_result.error}"
-                    agent.session_memory.add(
-                        "tool",
-                        f"{status}: {tool_result.output}",
-                        metadata={"tool_name": decision.tool_name},
-                    )
-
+                if decision.tool_name is not None:
+                    run.emit("tool_call", {
+                        "step": step,
+                        "tool_name": decision.tool_name,
+                        "tool_args": decision.tool_args,
+                    })
+                else:
+                    run.emit("step_end", {"step": step, "answer": decision.answer})
+            elif event == "tool_result":
+                tool_name = args[0]
+                result = args[1]
                 run.emit("tool_result", {
                     "step": step,
-                    "tool_name": decision.tool_name,
-                    "success": tool_result.success,
-                    "output": tool_result.output,
-                    "error": tool_result.error,
+                    "tool_name": tool_name,
+                    "success": result.success,
+                    "output": result.output,
+                    "error": result.error,
                 })
+                time.sleep(0.3)
+            elif event == "error":
+                run.emit("step_error", {"step": step, "error": args[0]})
 
-                time.sleep(0.6)
+        result = agent.run(run.task, on_step=on_step)
 
-            run.emit("agent_done", {
-                "success": bool(result.success),
-                "steps": result.steps,
-                "result": result.final_state.result,
-            })
-            run.final_result = result
-            run.done = True
-
-        agent.run = instrumented_run  # type: ignore[assignment]
-        agent.run(run.task)
+        run.emit("agent_done", {
+            "success": result.success,
+            "steps": result.steps,
+            "result": result.final_state.result,
+        })
+        run.final_result = result
+        run.done = True
     except Exception as e:
         run.emit("agent_error", {"error": str(e)})
         run.done = True
@@ -217,11 +162,12 @@ async def start_run(request: Request):
     if not task:
         return {"error": "task is required"}
 
+    use_llm = form.get("use_llm", "on") == "on"
     run_id = uuid.uuid4().hex[:8]
     run = AgentRun(run_id=run_id, task=task)
     _ACTIVE_RUNS[run_id] = run
 
-    threading.Thread(target=_run_agent_in_thread, args=(run, ), daemon=True).start()
+    threading.Thread(target=_run_agent_in_thread, args=(run, use_llm), daemon=True).start()
     return {"run_id": run_id}
 
 

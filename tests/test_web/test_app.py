@@ -55,7 +55,7 @@ class TestRuns:
         assert r.json().get("error") == "run not found"
 
     def test_run_produces_events(self):
-        r = client.post("/api/runs", data={"task": "create a file"})
+        r = client.post("/api/runs", data={"task": "create a file", "use_llm": "off"})
         run_id = r.json()["run_id"]
 
         time.sleep(3)
@@ -69,7 +69,7 @@ class TestRuns:
         assert "tool_call" in types or "agent_done" in types
 
     def test_run_completes(self):
-        r = client.post("/api/runs", data={"task": "create a file"})
+        r = client.post("/api/runs", data={"task": "create a file", "use_llm": "off"})
         run_id = r.json()["run_id"]
 
         time.sleep(5)
@@ -81,7 +81,7 @@ class TestRuns:
         assert "agent_done" in types
 
     def test_sse_stream(self):
-        r = client.post("/api/runs", data={"task": "create a file"})
+        r = client.post("/api/runs", data={"task": "create a file", "use_llm": "off"})
         run_id = r.json()["run_id"]
 
         time.sleep(3)
@@ -91,6 +91,6 @@ class TestRuns:
         assert "text/event-stream" in r.headers.get("content-type", "")
 
     def test_multiple_runs_independent(self):
-        r1 = client.post("/api/runs", data={"task": "create file A"})
-        r2 = client.post("/api/runs", data={"task": "create file B"})
+        r1 = client.post("/api/runs", data={"task": "create file A", "use_llm": "off"})
+        r2 = client.post("/api/runs", data={"task": "create file B", "use_llm": "off"})
         assert r1.json()["run_id"] != r2.json()["run_id"]

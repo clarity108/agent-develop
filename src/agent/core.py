@@ -63,7 +63,7 @@ class DevAgent:
             answer="No planning strategy available.",
         )
 
-    def run(self, task: str) -> AgentResult:
+    def run(self, task: str, on_step=None) -> AgentResult:
         self._state = AgentState(max_steps=self._max_steps)
         self._state.thought = f"Starting task: {task}"
 
@@ -76,6 +76,9 @@ class DevAgent:
             self._state.thought = decision.thought
             self._state.action = decision.action
 
+            if on_step:
+                on_step("decision", step, decision)
+
             if decision.tool_name is None:
                 self._state.result = decision.answer
                 self._state.done = True
@@ -86,12 +89,17 @@ class DevAgent:
             if decision.tool_name not in self._tools:
                 self._state.result = f"unknown tool: {decision.tool_name}"
                 self._state.done = True
+                if on_step:
+                    on_step("error", step, f"unknown tool: {decision.tool_name}")
                 break
 
             tool_result = self._tools[decision.tool_name](**decision.tool_args)
             self._state.result = tool_result.output
             if not tool_result.success and tool_result.error:
                 self._state.result += f"\nERROR: {tool_result.error}"
+
+            if on_step:
+                on_step("tool_result", step, decision.tool_name, tool_result)
 
             if self._session_memory:
                 self._session_memory.add(
