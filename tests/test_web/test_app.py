@@ -154,3 +154,14 @@ class TestHistory:
         assert len(ours) == 2
         assert ours[0]["run_id"] == run_id_2
         assert ours[1]["run_id"] == run_id_1
+
+    def test_delete_single_history_run(self, _client):
+        r = _client.post("/api/runs", data={"task": "to delete", "use_llm": "off"})
+        run_id = r.json()["run_id"]
+        time.sleep(4)
+
+        r = _client.delete(f"/api/history/{run_id}")
+        assert r.json()["deleted"] == 1
+
+        r = _client.get("/api/history")
+        assert not any(e["run_id"] == run_id for e in r.json())

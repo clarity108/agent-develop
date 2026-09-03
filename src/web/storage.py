@@ -99,3 +99,13 @@ def delete_all_runs() -> int:
         return cur.rowcount
     finally:
         conn.close()
+
+
+def delete_run(run_id: str) -> int:
+    conn = _get_conn()
+    try:
+        cur = conn.execute("DELETE FROM runs WHERE id = ?", (run_id,))
+        conn.commit()
+        return cur.rowcount
+    finally:
+        conn.close()

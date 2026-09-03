@@ -322,6 +322,7 @@ html, body {
 }
 
 .history-item {
+  position: relative;
   padding: var(--s1) var(--s2);
   border-left: 2px solid var(--hairline-2);
   cursor: pointer;
@@ -331,6 +332,31 @@ html, body {
 .history-item:hover {
   background: var(--bg-panel);
   border-left-color: var(--accent);
+}
+
+.btn-del-item {
+  position: absolute;
+  top: var(--s1);
+  right: var(--s1);
+  background: none;
+  border: none;
+  color: var(--ink-mute);
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1;
+  padding: 2px 4px;
+  cursor: pointer;
+  opacity: 0;
+  transition: color 0.15s, opacity 0.15s;
+}
+
+.history-item:hover .btn-del-item {
+  opacity: 1;
+}
+
+.btn-del-item:hover {
+  color: var(--error);
 }
 
 .history-item .h-task {

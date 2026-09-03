@@ -347,14 +347,27 @@
       var elapsed = (s.elapsed || 0).toFixed(1) + "s";
       var model = s.use_llm ? "LLM" : "rule";
       item.innerHTML =
-        '<div class="h-task">' + esc(s.task.slice(0, 30)) + "</div>" +
+        '<div class="h-task">' + esc(s.task.slice(0, 26)) + '</div>' +
         '<div class="h-meta">' + statusLabel +
-        " · " + s.steps + " steps · " + elapsed + " · " + model + "</div>";
+        " · " + s.steps + " steps · " + elapsed + " · " + model + "</div>" +
+        '<button class="btn-del-item" data-run-id="' + s.run_id + '" title="delete session">×</button>';
       item.addEventListener("click", function () {
         loadRun(s.run_id);
       });
+      var delBtn = item.querySelector(".btn-del-item");
+      delBtn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        deleteHistoryRun(s.run_id);
+      });
       list.appendChild(item);
     });
+  }
+
+  async function deleteHistoryRun(runId) {
+    try {
+      await fetch("/api/history/" + runId, { method: "DELETE" });
+      refreshHistory();
+    } catch (e) {}
   }
 
   async function refreshHistory() {

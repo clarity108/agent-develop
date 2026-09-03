@@ -65,6 +65,18 @@ class TestStorage:
         assert _storage.delete_all_runs() == 2
         assert _storage.list_runs() == []
 
+    def test_delete_run(self, _storage):
+        _storage.init_db()
+        _storage.save_run("a", "t", True, True, 1, 0.1, False)
+        _storage.save_run("b", "t", True, True, 1, 0.1, False)
+        _storage.delete_run("a")
+        assert len(_storage.list_runs()) == 1
+        assert _storage.list_runs()[0]["run_id"] == "b"
+
+    def test_delete_run_not_found(self, _storage):
+        _storage.init_db()
+        assert _storage.delete_run("nonexistent") == 0
+
     def test_insert_or_replace_upsert(self, _storage):
         _storage.init_db()
         _storage.save_run("a", "t1", True, True, 1, 0.1, False)

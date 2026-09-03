@@ -23,7 +23,7 @@ from src.tools import (
     get_tool_metadata, tool,
 )
 from src.tools.metadata import ToolMetadata
-from src.web.storage import init_db, save_run, list_runs, delete_all_runs
+from src.web.storage import init_db, save_run, list_runs, delete_all_runs, delete_run
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 TEMPLATES_DIR = PROJECT_ROOT / "web"
@@ -273,4 +273,10 @@ async def get_history():
 @app.delete("/api/history")
 async def clear_history():
     count = delete_all_runs()
+    return {"deleted": count}
+
+
+@app.delete("/api/history/{run_id}")
+async def delete_history_run(run_id: str):
+    count = delete_run(run_id)
     return {"deleted": count}
