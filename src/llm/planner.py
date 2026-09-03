@@ -1,28 +1,46 @@
 from __future__ import annotations
 
+import inspect
 import json
 
 from .client import DashScopeLLMClient
 from .messages import AgentMessage
 from src.agent.core import DevAgent, Decision
-from src.tools.metadata import get_tool_metadata
+from src.tools.metadata import get_tool_metadata, ParameterSchema
+
+
+def _tool_signature(fn) -> str:
+    sig = inspect.signature(fn)
+    parts = []
+    for pname, param in sig.parameters.items():
+        if param.default is inspect.Parameter.empty:
+            parts.append(f"{pname}: str")
+        else:
+            parts.append(f"{pname}: str = {param.default!r}")
+    return "(" + ", ".join(parts) + ")"
+
+
+def _tool_params(fn) -> str:
+    sig = inspect.signature(fn)
+    lines = []
+    for pname, param in sig.parameters.items():
+        req = "required" if param.default is inspect.Parameter.empty else "optional"
+        default = f" = {param.default!r}" if param.default is not inspect.Parameter.empty else ""
+        lines.append(f"  - {pname} (str, {req}){default}")
+    return "\n".join(lines) if lines else "  (none)"
 
 
 def build_tools_section(tools: dict) -> str:
     sections = []
     for name, fn in sorted(tools.items()):
         meta = get_tool_metadata(fn) if fn else None
-        if meta:
-            params_lines = []
-            for pname, pschema in meta.parameters.items():
-                req = "required" if pschema.required else "optional"
-                params_lines.append(
-                    f"  - {pname} ({pschema.type}, {req}): {pschema.description}"
-                )
-            params = ("\nParameters:\n" + "\n".join(params_lines)) if params_lines else ""
-            sections.append(f"### {meta.name}\n{meta.description}.{params}")
-        else:
-            sections.append(f"### {name}\nNo description available.")
+        desc = meta.description if meta else "No description available."
+        sig = _tool_signature(fn) if fn else f"({name})"
+        params = _tool_params(fn) if fn else "  (none)"
+        sections.append(
+            f"### {meta.name if meta else name}{sig}\n{desc}\n"
+            f"Parameters:\n{params}"
+        )
     return "\n\n".join(sections) if sections else "No tools available."
 
 

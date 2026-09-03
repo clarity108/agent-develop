@@ -24,6 +24,7 @@ class ChatResponse:
     content: str = ""
     error: str | None = None
     usage: "UsageInfo" = field(default_factory=UsageInfo)
+    reasoning_content: str = ""
 
 
 class DashScopeLLMClient:
@@ -32,7 +33,7 @@ class DashScopeLLMClient:
     def __init__(
         self,
         api_key: str,
-        model: str = "glm-2.5",
+        model: str = "glm-5.2",
         base_url: str | None = None,
         temperature: float = 0.7,
         max_tokens: int = 2048,
@@ -91,6 +92,7 @@ class DashScopeLLMClient:
             return ChatResponse(
                 role=msg.get("role", "assistant"),
                 content=msg.get("content", ""),
+                reasoning_content=msg.get("reasoning_content", ""),
                 usage=UsageInfo(
                     prompt_tokens=usage.get("prompt_tokens", 0),
                     completion_tokens=usage.get("completion_tokens", 0),

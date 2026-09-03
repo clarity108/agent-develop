@@ -3,16 +3,20 @@ agent:
   max_steps: 20
   max_retries: 3
 
+
 llm:
   provider: "dashscope"
   api_key: "${DASHSCOPE_API_KEY}"
-  model: "glm-2.5"
-  base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+  model: "glm-5.2"
+  base_url: "https://ws-lpktm4ms7sp43lpx.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
+
 
 memory:
   session_limit: 50
   long_term_store: "sqlite"
 
+
 harness:
   log_level: "INFO"
   trace_enabled: true
+
