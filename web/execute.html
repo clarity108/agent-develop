@@ -3,6 +3,16 @@
 
 {% block content %}
 <div class="layout">
+  <div class="top-bar">
+    <span class="top-bar-title">AGENT CONSOLE</span>
+    <span class="top-bar-sep">/</span>
+    <span class="top-bar-tag">v0.1</span>
+    <span class="top-bar-spacer"></span>
+    <span class="top-bar-status">
+      <span class="status-dot" id="topbar-dot"></span>
+      <span id="topbar-status-text">idle</span>
+    </span>
+  </div>
 
   <aside class="sidebar-left">
     <div class="panel task-panel">
@@ -30,6 +40,14 @@
         </form>
         <div class="task-hint">
           press <kbd>enter</kbd> to submit &nbsp; <kbd>esc</kbd> to clear
+        </div>
+        <div class="mode-toggle">
+          <label class="toggle-label">
+            <input type="checkbox" id="use-llm" checked />
+            <span class="toggle-switch"></span>
+            <span class="toggle-text">LLM</span>
+            <span class="toggle-mode" id="mode-text">glm-5.2</span>
+          </label>
         </div>
       </div>
     </div>

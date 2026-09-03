@@ -126,6 +126,7 @@ def _run_agent_in_thread(run: AgentRun, use_llm: bool = True) -> None:
         run.emit("agent_done", {
             "success": result.success,
             "steps": result.steps,
+            "task": run.task,
             "result": result.final_state.result,
         })
         run.final_result = result

@@ -39,8 +39,7 @@
     $("#status-indicator").textContent = s;
     $("#state-status").textContent = s;
     $("#state-status").className = "state-val " + s;
-    var dot = document.querySelector(".status-dot");
-    if (dot) dot.className = "status-dot" + (s === "running" ? " active" : "");
+    syncTopBar();
     var title = $("#trace-title");
     if (title) {
       title.textContent = s === "idle" ? "// idle" : "// " + s;
@@ -263,14 +262,24 @@
     clearTrace();
     $("#trace-task").textContent = task;
     setStatus("running");
+    var useLlm = $("#use-llm").checked ? "on" : "off";
 
     var res = await fetch("/api/runs", {
       method: "POST",
-      body: new URLSearchParams({ task: task }),
+      body: new URLSearchParams({ task: task, use_llm: useLlm }),
     });
     var data = await res.json();
     activeRunId = data.run_id;
     connectStream(activeRunId);
+  }
+
+  function syncTopBar() {
+    var text = $("#topbar-status-text");
+    var dot = $("#topbar-dot");
+    if (text) text.textContent = $("#state-status").textContent;
+    if (dot) {
+      dot.className = "status-dot" + ($("#state-status").textContent === "running" ? " active" : "");
+    }
   }
 
   function updateHistory() {
@@ -345,6 +354,12 @@
         e.target.value = "";
         e.target.blur();
       }
+    });
+
+    $("#use-llm").addEventListener("change", function () {
+      $("#mode-text").textContent = this.checked ? "glm-5.2" : "rule-based";
+      $("#state-model").textContent = this.checked ? "glm-5.2" : "rule-based";
+      $("#agent-type").textContent = this.checked ? "LLM" : "rule-based";
     });
 
     updateHistory();
