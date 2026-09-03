@@ -5,6 +5,7 @@
 
   var activeRunId = null;
   var eventSource = null;
+  var activeConversationId = null;
   var stats = { steps: 0, toolCalls: 0, errors: 0 };
 
   var $ = function (sel) { return document.querySelector(sel); };
@@ -314,12 +315,17 @@
     setStatus("running");
     var useLlm = $("#use-llm").checked ? "on" : "off";
 
+    var params = { task: task, use_llm: useLlm };
+    if (activeConversationId) params.conversation_id = activeConversationId;
+
     var res = await fetch("/api/runs", {
       method: "POST",
-      body: new URLSearchParams({ task: task, use_llm: useLlm }),
+      body: new URLSearchParams(params),
     });
     var data = await res.json();
     activeRunId = data.run_id;
+    activeConversationId = data.conversation_id;
+    updateConvIndicator();
     connectStream(activeRunId);
   }
 
@@ -329,6 +335,17 @@
     if (text) text.textContent = $("#state-status").textContent;
     if (dot) {
       dot.className = "status-dot" + ($("#state-status").textContent === "running" ? " active" : "");
+    }
+  }
+
+  function updateConvIndicator() {
+    var indicator = $("#conv-indicator");
+    if (!indicator) return;
+    if (activeConversationId) {
+      indicator.style.display = "flex";
+      $("#conv-id").textContent = activeConversationId;
+    } else {
+      indicator.style.display = "none";
     }
   }
 
@@ -343,16 +360,31 @@
     rows.forEach(function (s) {
       var item = document.createElement("div");
       var statusLabel = s.cancelled ? "stopped" : (s.success ? "ok" : "fail");
-      item.className = "history-item" + (s.cancelled ? " cancelled" : "");
+      item.className = "history-item" + (s.cancelled ? " cancelled" : "") +
+        (s.conversation_id === activeConversationId ? " active" : "");
       var elapsed = (s.elapsed || 0).toFixed(1) + "s";
       var model = s.use_llm ? "LLM" : "rule";
+      var convLabel = s.conversation_id ? (s.conversation_id.slice(0, 4) + "..") : "";
       item.innerHTML =
         '<div class="h-task">' + esc(s.task.slice(0, 26)) + '</div>' +
         '<div class="h-meta">' + statusLabel +
+        (s.conversation_id ? (" · " + convLabel) : "") +
         " · " + s.steps + " steps · " + elapsed + " · " + model + "</div>" +
+        '<button class="btn-continue" data-conv-id="' + (s.conversation_id || "") + '" title="continue conversation">&rarr;</button>' +
         '<button class="btn-del-item" data-run-id="' + s.run_id + '" title="delete session">×</button>';
       item.addEventListener("click", function () {
         loadRun(s.run_id);
+      });
+      var contBtn = item.querySelector(".btn-continue");
+      contBtn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        var convId = s.conversation_id;
+        if (convId) {
+          activeConversationId = (activeConversationId === convId) ? null : convId;
+          updateConvIndicator();
+          refreshHistory();
+          $("#task-input").focus();
+        }
       });
       var delBtn = item.querySelector(".btn-del-item");
       delBtn.addEventListener("click", function (e) {
@@ -473,6 +505,16 @@ document.addEventListener("DOMContentLoaded", function () {
     if (clearHistoryBtn) {
       clearHistoryBtn.addEventListener("click", function () {
         clearHistory();
+      });
+    }
+
+    var convClearBtn = $("#conv-clear");
+    if (convClearBtn) {
+      convClearBtn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        activeConversationId = null;
+        updateConvIndicator();
+        refreshHistory();
       });
     }
 

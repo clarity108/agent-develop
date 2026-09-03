@@ -85,3 +85,27 @@ class TestStorage:
         assert len(runs) == 1
         assert runs[0]["task"] == "t2"
         assert runs[0]["cancelled"] is True
+
+    def test_save_and_list_with_conversation_id(self, _storage):
+        _storage.init_db()
+        _storage.save_run(
+            run_id="a", task="first", use_llm=True, success=True,
+            steps=1, elapsed=0.5, cancelled=False, conversation_id="conv1",
+        )
+        _storage.save_run(
+            run_id="b", task="second", use_llm=True, success=True,
+            steps=2, elapsed=1.0, cancelled=False, conversation_id="conv1",
+        )
+        _storage.save_run(
+            run_id="c", task="other", use_llm=False, success=True,
+            steps=1, elapsed=0.2, cancelled=False,
+        )
+        runs = _storage.list_runs()
+        assert len(runs) == 3
+        conv1_runs = [r for r in runs if r["conversation_id"] == "conv1"]
+        assert len(conv1_runs) == 2
+        assert conv1_runs[0]["task"] == "second"
+        assert conv1_runs[1]["task"] == "first"
+        standalone = [r for r in runs if not r["conversation_id"]]
+        assert len(standalone) == 1
+        assert standalone[0]["run_id"] == "c"

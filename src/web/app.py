@@ -23,6 +23,7 @@ from src.tools import (
     get_tool_metadata, tool,
 )
 from src.tools.metadata import ToolMetadata
+from src.memory.session import SessionMemory
 from src.web.storage import init_db, save_run, list_runs, delete_all_runs, delete_run
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -39,6 +40,7 @@ def favicon():
     return Response(content="", media_type="image/x-icon")
 
 _ACTIVE_RUNS: dict[str, "AgentRun"] = {}
+_CONVERSATIONS: dict[str, SessionMemory] = {}
 
 
 @dataclass
@@ -65,7 +67,7 @@ class AgentRun:
         return round(time.time() - self.start_time, 1)
 
 
-def _build_agent(use_llm: bool) -> DevAgent:
+def _build_agent(use_llm: bool, session_memory: SessionMemory | None = None) -> DevAgent:
     tools = {
         "read_file": read_file,
         "write_file": write_file,
@@ -78,7 +80,7 @@ def _build_agent(use_llm: bool) -> DevAgent:
     if use_llm:
         config = load_config(str(PROJECT_ROOT / "config" / "default.yaml"))
         client = build_client(config["llm"])
-        return LLMDevAgent(client=client, tools=tools)
+        return LLMDevAgent(client=client, tools=tools, session_memory=session_memory)
     return RuleBasedDevAgent(
         rules=[
             {"match": "create", "step": 1, "tool": "write_file",
@@ -88,13 +90,19 @@ def _build_agent(use_llm: bool) -> DevAgent:
             {"match": "create", "step": 3, "answer": "File created and verified."},
         ],
         tools=tools,
+        session_memory=session_memory,
     )
 
 
-def _run_agent_in_thread(run: AgentRun, use_llm: bool = True) -> None:
+def _run_agent_in_thread(run: AgentRun, use_llm: bool = True, conversation_id: str | None = None) -> None:
     try:
-        agent = _build_agent(use_llm)
-        run.emit("agent_start", {"task": run.task, "tools": agent.available_tools(), "use_llm": use_llm})
+        session_memory = _CONVERSATIONS.get(conversation_id) if conversation_id else None
+        if session_memory is None:
+            session_memory = SessionMemory()
+            if conversation_id:
+                _CONVERSATIONS[conversation_id] = session_memory
+        agent = _build_agent(use_llm, session_memory=session_memory)
+        run.emit("agent_start", {"task": run.task, "tools": agent.available_tools(), "use_llm": use_llm, "conversation_id": conversation_id})
 
         def on_step(event: str, step: int, *args):
             if event == "decision":
@@ -145,6 +153,7 @@ def _run_agent_in_thread(run: AgentRun, use_llm: bool = True) -> None:
             steps=result.steps,
             elapsed=run.elapsed(),
             cancelled=run.cancelled,
+            conversation_id=conversation_id,
         )
         run.final_result = result
         run.done = True
@@ -159,6 +168,7 @@ def _run_agent_in_thread(run: AgentRun, use_llm: bool = True) -> None:
             steps=0,
             elapsed=run.elapsed(),
             cancelled=False,
+            conversation_id=conversation_id,
         )
 
 
@@ -194,12 +204,19 @@ async def start_run(request: Request):
         return {"error": "task is required"}
 
     use_llm = form.get("use_llm", "on") == "on"
+    conversation_id = form.get("conversation_id", "").strip() or None
+    if not conversation_id:
+        conversation_id = uuid.uuid4().hex[:8]
     run_id = uuid.uuid4().hex[:8]
     run = AgentRun(run_id=run_id, task=task)
     _ACTIVE_RUNS[run_id] = run
 
-    threading.Thread(target=_run_agent_in_thread, args=(run, use_llm), daemon=True).start()
-    return {"run_id": run_id}
+    threading.Thread(
+        target=_run_agent_in_thread,
+        args=(run, use_llm, conversation_id),
+        daemon=True,
+    ).start()
+    return {"run_id": run_id, "conversation_id": conversation_id}
 
 
 @app.get("/api/runs/{run_id}/stream")

@@ -165,3 +165,28 @@ class TestHistory:
 
         r = _client.get("/api/history")
         assert not any(e["run_id"] == run_id for e in r.json())
+
+    def test_history_includes_conversation_id(self, _client):
+        r = _client.post("/api/runs", data={"task": "test", "use_llm": "off"})
+        run_id = r.json()["run_id"]
+        conv_id = r.json()["conversation_id"]
+        assert conv_id and len(conv_id) == 8
+        time.sleep(4)
+
+        r = _client.get("/api/history")
+        entry = next(e for e in r.json() if e["run_id"] == run_id)
+        assert entry["conversation_id"] == conv_id
+
+    def test_continue_conversation_uses_same_id(self, _client):
+        r = _client.post("/api/runs", data={"task": "first", "use_llm": "off"})
+        conv_id = r.json()["conversation_id"]
+        time.sleep(4)
+
+        r = _client.post("/api/runs", data={"task": "second", "use_llm": "off", "conversation_id": conv_id})
+        assert r.json()["conversation_id"] == conv_id
+        time.sleep(4)
+
+        r = _client.get("/api/history")
+        conv_runs = [e for e in r.json() if e["conversation_id"] == conv_id]
+        assert len(conv_runs) == 2
+        assert {e["task"] for e in conv_runs} == {"first", "second"}

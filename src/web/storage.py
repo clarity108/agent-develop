@@ -23,7 +23,8 @@ def _get_conn() -> sqlite3.Connection:
         "  steps INTEGER NOT NULL,"
         "  elapsed REAL NOT NULL,"
         "  cancelled INTEGER NOT NULL,"
-        "  finished_at TEXT NOT NULL"
+        "  finished_at TEXT NOT NULL,"
+        "  conversation_id TEXT"
         ")"
     )
     return conn
@@ -31,8 +32,13 @@ def _get_conn() -> sqlite3.Connection:
 
 def init_db() -> None:
     conn = _get_conn()
-    conn.commit()
-    conn.close()
+    try:
+        conn.execute("ALTER TABLE runs ADD COLUMN conversation_id TEXT")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass
+    finally:
+        conn.close()
 
 
 def save_run(
@@ -43,13 +49,14 @@ def save_run(
     steps: int,
     elapsed: float,
     cancelled: bool,
+    conversation_id: str | None = None,
 ) -> None:
     conn = _get_conn()
     try:
         conn.execute(
             "INSERT OR REPLACE INTO runs "
-            "(id, task, use_llm, success, steps, elapsed, cancelled, finished_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "(id, task, use_llm, success, steps, elapsed, cancelled, finished_at, conversation_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 run_id,
                 task,
@@ -59,6 +66,7 @@ def save_run(
                 elapsed,
                 1 if cancelled else 0,
                 time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                conversation_id,
             ),
         )
         conn.commit()
@@ -70,7 +78,7 @@ def list_runs(limit: int = 50) -> list[dict]:
     conn = _get_conn()
     try:
         rows = conn.execute(
-            "SELECT id, task, use_llm, success, steps, elapsed, cancelled, finished_at, ROWID "
+            "SELECT id, task, use_llm, success, steps, elapsed, cancelled, finished_at, conversation_id, ROWID "
             "FROM runs ORDER BY finished_at DESC, ROWID DESC LIMIT ?",
             (limit,),
         ).fetchall()
@@ -84,6 +92,7 @@ def list_runs(limit: int = 50) -> list[dict]:
                 "elapsed": r[5],
                 "cancelled": bool(r[6]),
                 "finished_at": r[7],
+                "conversation_id": r[8],
             }
             for r in rows
         ]
