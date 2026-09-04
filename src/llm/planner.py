@@ -143,6 +143,7 @@ class LLMPlanner:
         available_tools=None,
         session_memory=None,
         context: str = "",
+        on_compression=None,
     ) -> Decision:
         tools: dict = {}
         if isinstance(available_tools, dict):
@@ -163,6 +164,13 @@ class LLMPlanner:
                             f"result: {mem.get('result', 'N/A')}"
                         )
                 system_prompt += "\n".join(past_lines)
+
+        if session_memory:
+            if session_memory.maybe_compress(self._client) and on_compression:
+                on_compression(
+                    session_memory.message_count(),
+                    session_memory.summary_length(),
+                )
 
         messages = [AgentMessage(role="system", content=system_prompt)]
 
@@ -242,10 +250,11 @@ class LLMDevAgent(DevAgent):
         self._client = client
         self._planner = LLMPlanner(client, long_term_memory=long_term_memory)
 
-    def _plan(self, task: str, step: int) -> Decision:
+    def _plan(self, task: str, step: int, on_compression=None) -> Decision:
         return self._planner.plan(
             task,
             step,
             available_tools=self._tools,
             session_memory=self._session_memory,
+            on_compression=on_compression,
         )

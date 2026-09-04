@@ -247,6 +247,20 @@
         return;
       }
 
+      if (msg.type === "context_compressed") {
+        var trace = $("#trace");
+        var indicator = document.createElement("div");
+        indicator.className = "compression-indicator";
+        indicator.innerHTML =
+          '<span class="compression-icon">⚡</span>' +
+          '<span class="compression-text">context compressed · ' +
+          msg.data.messages + ' msgs kept · ' +
+          msg.data.summary_length + ' chars summarized</span>';
+        trace.appendChild(indicator);
+        trace.scrollTop = trace.scrollHeight;
+        return;
+      }
+
       if (msg.type === "agent_done") {
         var cancelled = msg.data.cancelled;
         setStatus(cancelled ? "cancelled" : (msg.data.success ? "done" : "failed"));

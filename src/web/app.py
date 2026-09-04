@@ -141,7 +141,14 @@ def _run_agent_in_thread(run: AgentRun, use_llm: bool = True, conversation_id: s
             elif event == "error":
                 run.emit("step_error", {"step": step, "error": args[0]})
 
-        result = agent.run(run.task, on_step=on_step, cancel_check=lambda: run.cancelled)
+        result = agent.run(
+            run.task,
+            on_step=on_step,
+            cancel_check=lambda: run.cancelled,
+            on_compression=lambda msgs, slen: run.emit("context_compressed", {
+                "messages": msgs, "summary_length": slen,
+            }),
+        )
 
         run.emit("agent_done", {
             "success": result.success if not run.cancelled else False,

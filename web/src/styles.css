@@ -1318,6 +1318,31 @@ html, body {
   border-color: var(--error);
 }
 
+/* COMPRESSION INDICATOR — shown in trace when context is compressed */
+
+.compression-indicator {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s1) var(--s3);
+  margin: var(--s2) 0;
+  border-left: 2px solid var(--accent);
+  background: rgba(212, 160, 48, 0.06);
+  font-size: 11px;
+  color: var(--accent);
+  animation: fade-slide 0.3s ease-out;
+}
+
+.compression-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.compression-text {
+  color: var(--ink-dim);
+  font-size: 10px;
+}
+
 /* ============================================================
    RESPONSIVE
    ============================================================ */
