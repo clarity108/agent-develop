@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from src.agent.core import RuleBasedDevAgent, DevAgent, AgentResult
+from src.agent.delegation import create_delegate_task_tool
 from src.llm.config import load_config, build_client
 from src.llm.planner import LLMDevAgent
 from src.tools import (
@@ -83,6 +84,10 @@ def _build_agent(use_llm: bool, session_memory: SessionMemory | None = None) -> 
     if use_llm:
         config = load_config(str(PROJECT_ROOT / "config" / "default.yaml"))
         client = build_client(config["llm"])
+        delegate_fn = create_delegate_task_tool(
+            client=client, tools=tools, long_term_memory=_LONG_TERM_MEMORY,
+        )
+        tools["delegate_task"] = delegate_fn
         return LLMDevAgent(
             client=client, tools=tools, session_memory=session_memory,
             long_term_memory=_LONG_TERM_MEMORY,
@@ -204,16 +209,20 @@ def _run_agent_in_thread(run: AgentRun, use_llm: bool = True, conversation_id: s
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     tools_list = []
-    for name in ["read_file", "write_file", "list_files", "edit_file",
-                  "execute_command", "git_status", "git_init", "git_add_commit"]:
-        fn = {"read_file": read_file, "write_file": write_file, "list_files": list_files,
-              "edit_file": edit_file, "execute_command": execute_command, "git_status": git_status,
-              "git_init": git_init, "git_add_commit": git_add_commit}[name]
+    _base_tools = {"read_file": read_file, "write_file": write_file, "list_files": list_files,
+                   "edit_file": edit_file, "execute_command": execute_command, "git_status": git_status,
+                   "git_init": git_init, "git_add_commit": git_add_commit}
+    for name in list(_base_tools.keys()):
+        fn = _base_tools[name]
         meta = get_tool_metadata(fn)
         tools_list.append({
             "name": meta.name if meta else name,
             "description": meta.description if meta else "No description available.",
         })
+    tools_list.append({
+        "name": "delegate_task",
+        "description": "Delegates a sub-task to a sub-agent that runs independently with a fresh context",
+    })
 
     _rules = _build_agent(False).rules
     rule_matches = sorted({r.get("match", "") for r in _rules if r.get("match")})
