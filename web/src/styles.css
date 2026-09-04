@@ -1007,6 +1007,321 @@ html, body {
   word-break: break-word;
 }
 
+/* ============================================================
+   SESSION GROUP — conversation-grouped history
+   ============================================================ */
+
+.session-group {
+  position: relative;
+  border: 1px solid var(--hairline-2);
+  border-radius: 3px;
+  margin-bottom: 2px;
+  background: var(--bg-panel);
+  transition: border-color 0.15s;
+}
+
+.session-group.active {
+  border-color: var(--accent);
+  background: rgba(212, 160, 48, 0.04);
+}
+
+.session-group.selected {
+  border-color: var(--steel);
+  background: rgba(91, 122, 153, 0.06);
+}
+
+.session-header {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s1) var(--s2);
+  cursor: pointer;
+}
+
+.session-header:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.session-title {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: 0.08em;
+  font-family: var(--mono);
+  flex: 1;
+}
+
+.session-turns {
+  font-size: 9px;
+  color: var(--ink-mute);
+  letter-spacing: 0.06em;
+}
+
+.session-turns-list {
+  border-top: 1px solid var(--hairline);
+}
+
+.session-turn {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: 2px var(--s2) 2px var(--s3);
+  cursor: pointer;
+  border-left: 2px solid transparent;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.session-turn:hover {
+  background: rgba(255, 255, 255, 0.02);
+  border-left-color: var(--accent);
+}
+
+.session-turn-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.session-turn-task {
+  font-size: 11px;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.session-turn-meta {
+  font-size: 9px;
+  color: var(--ink-mute);
+  margin-top: 1px;
+}
+
+.btn-del-session {
+  position: static;
+  background: none;
+  border: none;
+  color: var(--ink-mute);
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 0 2px;
+  cursor: pointer;
+  opacity: 0;
+  transition: color 0.15s, opacity 0.15s;
+  line-height: 1;
+}
+
+.session-header:hover .btn-del-session {
+  opacity: 1;
+}
+
+.btn-del-session:hover {
+  color: var(--error);
+}
+
+.btn-del-turn {
+  background: none;
+  border: none;
+  color: var(--ink-mute);
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 0 2px;
+  cursor: pointer;
+  opacity: 0;
+  transition: color 0.15s, opacity 0.15s;
+  line-height: 1;
+}
+
+.session-turn:hover .btn-del-turn {
+  opacity: 1;
+}
+
+.btn-del-turn:hover {
+  color: var(--error);
+}
+
+.conv-turns {
+  font-size: 9px;
+  color: var(--ink-mute);
+  letter-spacing: 0.06em;
+  flex-shrink: 0;
+}
+
+/* turn separator in trace area */
+.turn-separator {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s3) 0 var(--s2);
+  margin-top: var(--s3);
+}
+
+.turn-separator::before,
+.turn-separator::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--hairline-2);
+}
+
+.turn-separator span {
+  font-size: 9px;
+  color: var(--ink-mute);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* turn header in trace area */
+.turn-header {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s1) var(--s3);
+  background: var(--bg-panel);
+  border-left: 2px solid var(--steel);
+  margin-bottom: var(--s2);
+}
+
+.turn-header-label {
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--steel);
+  letter-spacing: 0.1em;
+  white-space: nowrap;
+}
+
+.turn-header-task {
+  font-size: 11px;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+
+.turn-header-meta {
+  font-size: 9px;
+  color: var(--ink-mute);
+  white-space: nowrap;
+}
+
+/* ============================================================
+   MEMORY PANEL — long-term memory management
+   ============================================================ */
+
+.memory-panel {
+  flex-shrink: 0;
+  max-height: 200px;
+  display: flex;
+  flex-direction: column;
+}
+
+.memory-list {
+  padding: var(--s1) var(--s2);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+
+.memory-empty {
+  padding: var(--s3) var(--s2);
+  font-size: 10px;
+  color: var(--ink-mute);
+  text-align: center;
+}
+
+.memory-item {
+  position: relative;
+  padding: var(--s1) var(--s2);
+  border-left: 2px solid var(--hairline-2);
+  cursor: default;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.memory-item:hover {
+  background: var(--bg-panel);
+  border-left-color: var(--accent);
+}
+
+.memory-item.ok {
+  border-left-color: var(--success);
+}
+
+.memory-item.fail {
+  border-left-color: var(--error);
+}
+
+.memory-task {
+  font-size: 10px;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 1px;
+}
+
+.memory-result {
+  font-size: 9px;
+  color: var(--ink-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 1px;
+}
+
+.memory-meta {
+  font-size: 9px;
+  color: var(--ink-mute);
+  letter-spacing: 0.04em;
+}
+
+.btn-del-memory {
+  position: absolute;
+  top: var(--s1);
+  right: var(--s1);
+  background: none;
+  border: none;
+  color: var(--ink-mute);
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 0 3px;
+  cursor: pointer;
+  opacity: 0;
+  transition: color 0.15s, opacity 0.15s;
+  line-height: 1;
+}
+
+.memory-item:hover .btn-del-memory {
+  opacity: 1;
+}
+
+.btn-del-memory:hover {
+  color: var(--error);
+}
+
+.btn-clear-memory {
+  background: transparent;
+  color: var(--ink-mute);
+  border: 1px solid var(--hairline-2);
+  padding: 1px var(--s2);
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  margin-left: auto;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.btn-clear-memory:hover {
+  color: var(--error);
+  border-color: var(--error);
+}
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+
 @media (max-width: 1100px) {
   .layout {
     grid-template-columns: 1fr;

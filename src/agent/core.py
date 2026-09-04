@@ -97,7 +97,20 @@ class DevAgent:
                     on_step("error", step, f"unknown tool: {decision.tool_name}")
                 break
 
-            tool_result = self._tools[decision.tool_name](**decision.tool_args)
+            try:
+                tool_result = self._tools[decision.tool_name](**decision.tool_args)
+            except TypeError as e:
+                tool_result = ToolResult(
+                    success=False,
+                    output="",
+                    error=f"invalid arguments: {e}",
+                )
+            except Exception as e:
+                tool_result = ToolResult(
+                    success=False,
+                    output="",
+                    error=str(e),
+                )
             self._state.result = tool_result.output
             if not tool_result.success and tool_result.error:
                 self._state.result += f"\nERROR: {tool_result.error}"

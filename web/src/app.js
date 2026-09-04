@@ -6,6 +6,8 @@
   var activeRunId = null;
   var eventSource = null;
   var activeConversationId = null;
+  var selectedSessionId = null;
+  var sessions = [];
   var stats = { steps: 0, toolCalls: 0, errors: 0 };
 
   var $ = function (sel) { return document.querySelector(sel); };
@@ -256,6 +258,7 @@
         if (lastBlock && !msg.data.success && !cancelled) lastBlock.classList.add("step-error");
 
         refreshHistory();
+        refreshMemories();
         return;
       }
 
@@ -343,55 +346,132 @@
     if (!indicator) return;
     if (activeConversationId) {
       indicator.style.display = "flex";
-      $("#conv-id").textContent = activeConversationId;
+      $("#conv-id").textContent = activeConversationId.slice(0, 6) + "…";
+      var tc = countSessionTurns(activeConversationId);
+      $("#conv-turns").textContent = tc + (tc === 1 ? " turn" : " turns");
     } else {
       indicator.style.display = "none";
     }
   }
 
-  function renderHistory(rows) {
+  function groupSessions(rows) {
+    var groups = {};
+    rows.forEach(function (r) {
+      var key = r.conversation_id || "__solo_" + r.run_id;
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(r);
+    });
+    var list = [];
+    Object.keys(groups).forEach(function (key) {
+      var runs = groups[key].sort(function (a, b) { return (a.finished_at || "").localeCompare(b.finished_at || ""); });
+      list.push({ conversationId: key.indexOf("__solo_") === 0 ? null : key, runs: runs });
+    });
+    list.sort(function (a, b) {
+      return (b.runs[b.runs.length - 1].finished_at || "").localeCompare(a.runs[a.runs.length - 1].finished_at || "");
+    });
+    return list;
+  }
+
+function countSessionTurns(convId) {
+    return sessions.filter(function (s) { return s.conversationId === convId; }).reduce(function (n, s) { return n + s.runs.length; }, 0);
+  }
+
+function renderHistory(rows) {
     $("#session-count").textContent = rows.length;
     var list = $("#history-list");
-    if (rows.length === 0) {
+    sessions = groupSessions(rows);
+
+    if (sessions.length === 0) {
       list.innerHTML = '<div class="history-empty">no sessions yet</div>';
       return;
     }
+
     list.innerHTML = "";
-    rows.forEach(function (s) {
-      var item = document.createElement("div");
-      var statusLabel = s.cancelled ? "stopped" : (s.success ? "ok" : "fail");
-      item.className = "history-item" + (s.cancelled ? " cancelled" : "") +
-        (s.conversation_id === activeConversationId ? " active" : "");
-      var elapsed = (s.elapsed || 0).toFixed(1) + "s";
-      var model = s.use_llm ? "LLM" : "rule";
-      var convLabel = s.conversation_id ? (s.conversation_id.slice(0, 4) + "..") : "";
-      item.innerHTML =
-        '<div class="h-task">' + esc(s.task.slice(0, 26)) + '</div>' +
-        '<div class="h-meta">' + statusLabel +
-        (s.conversation_id ? (" · " + convLabel) : "") +
-        " · " + s.steps + " steps · " + elapsed + " · " + model + "</div>" +
-        '<button class="btn-continue" data-conv-id="' + (s.conversation_id || "") + '" title="continue conversation">&rarr;</button>' +
-        '<button class="btn-del-item" data-run-id="' + s.run_id + '" title="delete session">×</button>';
-      item.addEventListener("click", function () {
-        loadRun(s.run_id);
+    sessions.forEach(function (session) {
+      var turns = session.runs;
+      var isSelected = session.conversationId === selectedSessionId;
+      var isActive = session.conversationId === activeConversationId;
+      var isExpanded = turns.length <= 3 || isActive || isSelected;
+
+      var groupEl = document.createElement("div");
+      groupEl.className = "session-group" + (isActive ? " active" : "") + (isSelected && !isActive ? " selected" : "");
+
+      var header = document.createElement("div");
+      header.className = "session-header";
+      var title = session.conversationId
+        ? (session.conversationId.slice(0, 6) + "…")
+        : "solo";
+      var turnCount = turns.length;
+      var turnLabel = turnCount === 1 ? "1 turn" : turnCount + " turns";
+      var expandLabel = isExpanded ? "▾" : "▸";
+      header.innerHTML =
+        '<span class="session-title">' + esc(title) + '</span>' +
+        '<span class="session-turns">' + turnLabel + '</span>' +
+        '<button class="btn-continue" data-conv-id="' + (session.conversationId || "") + '" title="activate this conversation">&rarr;</button>' +
+        '<button class="btn-del-session" title="delete session">×</button>';
+
+      groupEl.appendChild(header);
+
+      if (isExpanded) {
+        var turnsEl = document.createElement("div");
+        turnsEl.className = "session-turns-list";
+        turns.forEach(function (run) {
+          var statusLabel = run.cancelled ? "stopped" : (run.success ? "ok" : "fail");
+          var elapsed = (run.elapsed || 0).toFixed(1) + "s";
+          var model = run.use_llm ? "LLM" : "rule";
+          var turnEl = document.createElement("div");
+          turnEl.className = "session-turn";
+          turnEl.innerHTML =
+            '<div class="session-turn-info">' +
+            '<div class="session-turn-task">' + esc(run.task.slice(0, 22)) + '</div>' +
+            '<div class="session-turn-meta">' +
+            statusLabel + " · " + run.steps + "s · " + elapsed + " · " + model +
+            '</div></div>' +
+            '<button class="btn-del-turn" title="delete turn">×</button>';
+
+          turnEl.addEventListener("click", function () {
+            loadRun(run.run_id);
+            selectedSessionId = session.conversationId;
+            if (session.conversationId && !activeConversationId) {
+              activeConversationId = session.conversationId;
+              updateConvIndicator();
+            }
+            refreshHistory();
+          });
+          turnEl.querySelector(".btn-del-turn").addEventListener("click", function (e) {
+            e.stopPropagation();
+            deleteHistoryRun(run.run_id);
+          });
+          turnsEl.appendChild(turnEl);
+        });
+        groupEl.appendChild(turnsEl);
+      }
+
+      header.addEventListener("click", function (e) {
+        if (e.target.tagName === "BUTTON") return;
+        loadSession(session);
       });
-      var contBtn = item.querySelector(".btn-continue");
-      contBtn.addEventListener("click", function (e) {
+
+      header.querySelector(".btn-continue").addEventListener("click", function (e) {
         e.stopPropagation();
-        var convId = s.conversation_id;
-        if (convId) {
-          activeConversationId = (activeConversationId === convId) ? null : convId;
+        if (session.conversationId) {
+          activeConversationId = (activeConversationId === session.conversationId) ? null : session.conversationId;
           updateConvIndicator();
           refreshHistory();
           $("#task-input").focus();
         }
       });
-      var delBtn = item.querySelector(".btn-del-item");
-      delBtn.addEventListener("click", function (e) {
+
+      header.querySelector(".btn-del-session").addEventListener("click", function (e) {
         e.stopPropagation();
-        deleteHistoryRun(s.run_id);
+        Promise.all(turns.map(function (run) {
+          return fetch("/api/history/" + run.run_id, { method: "DELETE" });
+        })).then(function () {
+          refreshHistory();
+        });
       });
-      list.appendChild(item);
+
+      list.appendChild(groupEl);
     });
   }
 
@@ -420,6 +500,82 @@
     } catch (e) {}
   }
 
+async function refreshMemories() {
+    try {
+      var res = await fetch("/api/memory");
+      if (!res.ok) return;
+      var data = await res.json();
+      renderMemories(Array.isArray(data) ? data : []);
+    } catch (e) {
+      renderMemories([]);
+    }
+  }
+
+function renderMemories(memories) {
+    $("#memory-count").textContent = memories.length;
+    var list = $("#memory-list");
+    if (memories.length === 0) {
+      list.innerHTML = '<div class="memory-empty">no memories yet</div>';
+      return;
+    }
+    list.innerHTML = "";
+    memories.forEach(function (mem) {
+      var item = document.createElement("div");
+      item.className = "memory-item" + (mem.success ? " ok" : " fail");
+      var statusLabel = mem.success ? "ok" : "fail";
+      var ts = mem.timestamp ? new Date(mem.timestamp * 1000).toLocaleString() : "";
+      item.innerHTML =
+        '<div class="memory-task">' + esc(mem.task) + '</div>' +
+        '<div class="memory-result">' + esc((mem.result || "").slice(0, 80)) + '</div>' +
+        '<div class="memory-meta">' + statusLabel + " · " + mem.steps + "s · " + ts + '</div>' +
+        '<button class="btn-del-memory" title="delete">&times;</button>';
+      item.querySelector(".btn-del-memory").addEventListener("click", function (e) {
+        e.stopPropagation();
+        deleteMemoryItem(mem.key);
+      });
+      list.appendChild(item);
+    });
+  }
+
+async function deleteMemoryItem(key) {
+    try {
+      await fetch("/api/memory/" + key, { method: "DELETE" });
+      refreshMemories();
+    } catch (e) {}
+  }
+
+async function clearAllMemories() {
+    try {
+      await fetch("/api/memory", { method: "DELETE" });
+      refreshMemories();
+    } catch (e) {}
+  }
+
+  function loadRunEvents(events, cancelled) {
+    var lastStepBlock = null;
+    events.forEach(function (ev) {
+      var d = ev.data;
+      if (ev.type === "step_thought") {
+        stats.steps = Math.max(stats.steps, d.step);
+        lastStepBlock = appendTraceStep(d.step, d.thought);
+      } else if (ev.type === "tool_call") {
+        stats.toolCalls++;
+        if (lastStepBlock) appendToolCall(lastStepBlock, d.tool_name, d.tool_args);
+      } else if (ev.type === "tool_result") {
+        if (lastStepBlock) appendToolResult(lastStepBlock, d);
+        if (!d.success) stats.errors++;
+      } else if (ev.type === "step_end") {
+        if (lastStepBlock && d.answer) appendAnswer(lastStepBlock, d.answer);
+      } else if (ev.type === "agent_done") {
+        showFinalAnswer(d.success && !cancelled, d.result, cancelled);
+        var lastBlock = document.querySelector(".trace-step-block:last-child");
+        if (lastBlock && d.success) lastBlock.classList.add("step-final");
+        if (lastBlock && !d.success && !cancelled) lastBlock.classList.add("step-error");
+      }
+    });
+    return lastStepBlock;
+  }
+
   async function loadRun(runId) {
     var res = await fetch("/api/runs/" + runId);
     var data = await res.json();
@@ -431,30 +587,55 @@
     var cancelled = data.cancelled;
     setStatus(cancelled ? "cancelled" : (data.done ? "done" : "running"));
 
-    data.events.forEach(function (ev) {
-      var d = ev.data;
-      if (ev.type === "step_thought") {
-        stats.steps = Math.max(stats.steps, d.step);
-        appendTraceStep(d.step, d.thought);
-      } else if (ev.type === "tool_call") {
-        stats.toolCalls++;
-        var el = document.querySelector('[data-step="' + d.step + '"]');
-        if (el) appendToolCall(el, d.tool_name, d.tool_args);
-      } else if (ev.type === "tool_result") {
-        var el2 = document.querySelector('[data-step="' + d.step + '"]');
-        if (el2) appendToolResult(el2, d);
-        if (!d.success) stats.errors++;
-      } else if (ev.type === "step_end") {
-        var el3 = document.querySelector('[data-step="' + d.step + '"]');
-        if (el3 && d.answer) appendAnswer(el3, d.answer);
-      } else if (ev.type === "agent_done") {
-        showFinalAnswer(d.success && !cancelled, d.result, cancelled);
-        var lastBlock = document.querySelector(".trace-step-block:last-child");
-        if (lastBlock && d.success) lastBlock.classList.add("step-final");
-        if (lastBlock && !d.success && !cancelled) lastBlock.classList.add("step-error");
-      }
-    });
+    loadRunEvents(data.events, cancelled);
     updateStats(data.elapsed || 0);
+  }
+
+  async function loadSession(session) {
+    selectedSessionId = session.conversationId;
+    if (session.conversationId) {
+      activeConversationId = session.conversationId;
+      updateConvIndicator();
+    }
+    resetStats();
+    clearTrace();
+
+    var turns = session.runs;
+    var latest = turns[turns.length - 1];
+    setStatus(latest.cancelled ? "cancelled" : "done");
+    $("#trace-task").textContent = session.conversationId
+      ? "session " + session.conversationId.slice(0, 6) + "… · " + turns.length + " turns"
+      : turns.length + " runs";
+
+    for (var idx = 0; idx < turns.length; idx++) {
+      var run = turns[idx];
+      var res = await fetch("/api/runs/" + run.run_id);
+      var data = await res.json();
+      if (data.error) continue;
+
+      if (idx > 0) {
+        var sep = document.createElement("div");
+        sep.className = "turn-separator";
+        sep.innerHTML = '<span>turn ' + (idx + 1) + '</span>';
+        $("#trace").appendChild(sep);
+      }
+
+      var turnHeader = document.createElement("div");
+      turnHeader.className = "turn-header";
+      var statusLabel = run.cancelled ? "stopped" : (run.success ? "ok" : "fail");
+      var elapsed = (run.elapsed || 0).toFixed(1) + "s";
+      var model = run.use_llm ? "LLM" : "rule";
+      turnHeader.innerHTML =
+        '<span class="turn-header-label">TURN ' + (idx + 1) + '</span>' +
+        '<span class="turn-header-task">' + esc(run.task.slice(0, 40)) + '</span>' +
+        '<span class="turn-header-meta">' + statusLabel + " · " + run.steps + "s · " + elapsed + " · " + model + '</span>';
+      $("#trace").appendChild(turnHeader);
+
+      loadRunEvents(data.events, run.cancelled);
+    }
+
+    updateStats(latest.elapsed || 0);
+    refreshHistory();
   }
 
   var ruleMatches = [];
@@ -513,8 +694,16 @@ document.addEventListener("DOMContentLoaded", function () {
       convClearBtn.addEventListener("click", function (e) {
         e.stopPropagation();
         activeConversationId = null;
+        selectedSessionId = null;
         updateConvIndicator();
         refreshHistory();
+      });
+    }
+
+    var clearMemoryBtn = $("#btn-clear-memory");
+    if (clearMemoryBtn) {
+      clearMemoryBtn.addEventListener("click", function () {
+        clearAllMemories();
       });
     }
 
@@ -527,8 +716,9 @@ document.addEventListener("DOMContentLoaded", function () {
 
     updateModeHint($("#use-llm").checked);
     refreshHistory();
+    refreshMemories();
     updateStats(0);
   });
 
-  window.__agent = { submitTask: submitTask, loadRun: loadRun };
+  window.__agent = { submitTask: submitTask, loadRun: loadRun, loadSession: loadSession };
 })();

@@ -44,6 +44,7 @@
         <div class="conv-indicator" id="conv-indicator" style="display:none">
           <span class="conv-label">conv</span>
           <span class="conv-id" id="conv-id"></span>
+          <span class="conv-turns" id="conv-turns"></span>
           <button class="conv-clear" id="conv-clear" title="start new conversation">×</button>
         </div>
         <div class="mode-toggle">
@@ -184,6 +185,21 @@
           <span class="state-key">session_mem</span>
           <span class="state-val">enabled</span>
         </div>
+        <div class="state-row">
+          <span class="state-key">long_term</span>
+          <span class="state-val">enabled</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel memory-panel">
+      <div class="panel-header">
+        <span class="panel-label">LONG-TERM MEMORY</span>
+        <span class="panel-meta" id="memory-count">0</span>
+        <button class="btn-clear-memory" id="btn-clear-memory" title="clear all memories">clear</button>
+      </div>
+      <div class="memory-list" id="memory-list">
+        <div class="memory-empty">no memories yet</div>
       </div>
     </div>
   </aside>

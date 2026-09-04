@@ -24,6 +24,7 @@ from src.tools import (
 )
 from src.tools.metadata import ToolMetadata
 from src.memory.session import SessionMemory
+from src.memory.long_term import LongTermMemory
 from src.web.storage import init_db, save_run, list_runs, delete_all_runs, delete_run
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -41,6 +42,7 @@ def favicon():
 
 _ACTIVE_RUNS: dict[str, "AgentRun"] = {}
 _CONVERSATIONS: dict[str, SessionMemory] = {}
+_LONG_TERM_MEMORY = LongTermMemory(store_dir=str(PROJECT_ROOT / "memories"))
 
 
 @dataclass
@@ -80,7 +82,10 @@ def _build_agent(use_llm: bool, session_memory: SessionMemory | None = None) -> 
     if use_llm:
         config = load_config(str(PROJECT_ROOT / "config" / "default.yaml"))
         client = build_client(config["llm"])
-        return LLMDevAgent(client=client, tools=tools, session_memory=session_memory)
+        return LLMDevAgent(
+            client=client, tools=tools, session_memory=session_memory,
+            long_term_memory=_LONG_TERM_MEMORY,
+        )
     return RuleBasedDevAgent(
         rules=[
             {"match": "create", "step": 1, "tool": "write_file",
@@ -155,6 +160,14 @@ def _run_agent_in_thread(run: AgentRun, use_llm: bool = True, conversation_id: s
             cancelled=run.cancelled,
             conversation_id=conversation_id,
         )
+        _LONG_TERM_MEMORY.save(run.run_id, {
+            "timestamp": time.time(),
+            "task": run.task,
+            "success": result.success and not run.cancelled,
+            "steps": result.steps,
+            "result": result.final_state.result,
+            "conversation_id": conversation_id,
+        })
         run.final_result = result
         run.done = True
     except Exception as e:
@@ -170,6 +183,14 @@ def _run_agent_in_thread(run: AgentRun, use_llm: bool = True, conversation_id: s
             cancelled=False,
             conversation_id=conversation_id,
         )
+        _LONG_TERM_MEMORY.save(run.run_id, {
+            "timestamp": time.time(),
+            "task": run.task,
+            "success": False,
+            "steps": 0,
+            "result": f"Error: {e}",
+            "conversation_id": conversation_id,
+        })
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -297,3 +318,38 @@ async def clear_history():
 async def delete_history_run(run_id: str):
     count = delete_run(run_id)
     return {"deleted": count}
+
+
+@app.get("/api/memory")
+async def list_memories():
+    keys = _LONG_TERM_MEMORY.list_keys()
+    memories = []
+    for key in keys:
+        mem = _LONG_TERM_MEMORY.load(key)
+        if mem:
+            memories.append({"key": key, **mem})
+    return memories
+
+
+@app.get("/api/memory/{key}")
+async def get_memory(key: str):
+    mem = _LONG_TERM_MEMORY.load(key)
+    if mem is None:
+        return {"error": "memory not found"}
+    return {"key": key, **mem}
+
+
+@app.delete("/api/memory/{key}")
+async def delete_memory(key: str):
+    if key not in _LONG_TERM_MEMORY.list_keys():
+        return {"error": "memory not found"}
+    _LONG_TERM_MEMORY.delete(key)
+    return {"deleted": key}
+
+
+@app.delete("/api/memory")
+async def clear_memories():
+    keys = _LONG_TERM_MEMORY.list_keys()
+    for key in keys:
+        _LONG_TERM_MEMORY.delete(key)
+    return {"deleted": len(keys)}
