@@ -90,3 +90,88 @@ def edit_file(path: str, old_text: str, new_text: str, replace_all: bool = False
         return ToolResult(success=False, output="", error=f"permission denied: {path}")
     except Exception as e:
         return ToolResult(success=False, output="", error=str(e))
+
+
+def _try_compile(pattern: str):
+    import re
+    try:
+        return re.compile(pattern)
+    except re.error:
+        return re.compile(re.escape(pattern))
+
+
+@tool("Searches for a pattern in a file and returns matching lines with line numbers. Pattern is treated as regex; if invalid regex, falls back to literal search. context shows surrounding lines.")
+def search_in_file(path: str, pattern: str, context: int = 2, max_results: int = 50) -> ToolResult:
+    try:
+        p = Path(path)
+        if not p.exists():
+            return ToolResult(success=False, output="", error=f"file not found: {path}")
+
+        lines = p.read_text().splitlines()
+        rx = _try_compile(pattern)
+        results = []
+
+        for i, line in enumerate(lines):
+            if len(results) >= max_results:
+                break
+            if rx.search(line):
+                start = max(0, i - context)
+                end = min(len(lines), i + context + 1)
+                block_lines = []
+                for j in range(start, end):
+                    marker = ">>>" if j == i else "   "
+                    block_lines.append(f"{marker} {j+1:>4}: {lines[j]}")
+                results.append("\n".join(block_lines))
+
+        if not results:
+            return ToolResult(success=True, output=f"no matches for pattern: {pattern}")
+
+        output = f"{len(results)} match(es) in {path}:\n\n" + "\n---\n".join(results)
+        return ToolResult(success=True, output=output)
+
+    except Exception as e:
+        return ToolResult(success=False, output="", error=str(e))
+
+
+@tool("Searches for a pattern across files in a directory tree. Returns matching file paths and lines. Skips binary files and large files (>1MB).")
+def grep_files(directory: str, pattern: str, recursive: bool = True, max_results: int = 50) -> ToolResult:
+    try:
+        base = Path(directory)
+        if not base.is_dir():
+            return ToolResult(success=False, output="", error=f"not a directory: {directory}")
+
+        rx = _try_compile(pattern)
+        results = []
+        total_matches = 0
+
+        pattern_glob = "**/*" if recursive else "*"
+        for fpath in sorted(base.glob(pattern_glob)):
+            if not fpath.is_file() or total_matches >= max_results:
+                continue
+            if fpath.stat().st_size > 1_000_000:
+                continue
+
+            try:
+                lines = fpath.read_text(errors="replace").splitlines()
+            except Exception:
+                continue
+
+            file_matches = []
+            for i, line in enumerate(lines):
+                if len(results) + len(file_matches) >= max_results:
+                    break
+                if rx.search(line):
+                    file_matches.append(f"{fpath.relative_to(base)}:{i+1}: {line.strip()}")
+                    total_matches += 1
+
+            if file_matches:
+                results.extend(file_matches)
+
+        if not results:
+            return ToolResult(success=True, output=f"no matches for pattern: {pattern} in {directory}")
+
+        output = f"{len(results)} match(es) in {directory}:\n" + "\n".join(results)
+        return ToolResult(success=True, output=output)
+
+    except Exception as e:
+        return ToolResult(success=False, output="", error=str(e))

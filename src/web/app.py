@@ -20,6 +20,7 @@ from src.llm.config import load_config, build_client
 from src.llm.planner import LLMDevAgent
 from src.tools import (
     read_file, write_file, list_files, edit_file,
+    search_in_file, grep_files,
     execute_command, git_status, git_init, git_add_commit,
     get_tool_metadata, tool,
 )
@@ -76,6 +77,8 @@ def _build_agent(use_llm: bool, session_memory: SessionMemory | None = None) -> 
         "write_file": write_file,
         "list_files": list_files,
         "edit_file": edit_file,
+        "search_in_file": search_in_file,
+        "grep_files": grep_files,
         "execute_command": execute_command,
         "git_status": git_status,
         "git_init": git_init,
@@ -210,7 +213,8 @@ def _run_agent_in_thread(run: AgentRun, use_llm: bool = True, conversation_id: s
 async def index(request: Request):
     tools_list = []
     _base_tools = {"read_file": read_file, "write_file": write_file, "list_files": list_files,
-                   "edit_file": edit_file, "execute_command": execute_command, "git_status": git_status,
+                   "edit_file": edit_file, "search_in_file": search_in_file, "grep_files": grep_files,
+                   "execute_command": execute_command, "git_status": git_status,
                    "git_init": git_init, "git_add_commit": git_add_commit}
     for name in list(_base_tools.keys()):
         fn = _base_tools[name]
