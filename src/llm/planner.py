@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 import json
+import re
 
 from .client import DashScopeLLMClient
 from .messages import AgentMessage
@@ -131,6 +132,40 @@ Do not deviate from this format. Output JSON only.
 """
 
 
+_STOPWORDS = {
+    "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
+    "have", "has", "had", "do", "does", "did", "will", "would", "could",
+    "should", "may", "might", "can", "shall", "to", "of", "in", "for",
+    "on", "with", "at", "by", "from", "as", "into", "through", "during",
+    "and", "or", "but", "not", "so", "if", "then", "than", "that", "this",
+    "these", "those", "it", "its", "he", "she", "they", "we", "you", "i",
+    "me", "my", "our", "your", "his", "her", "their", "what", "which",
+    "who", "when", "where", "why", "how", "all", "each", "every", "both",
+    "few", "more", "most", "other", "some", "such", "no", "nor", "only",
+    "own", "same", "too", "very", "just", "also", "here", "there",
+}
+
+
+def _extract_keywords(text: str) -> set[str]:
+    words = re.findall(r"[a-z_][a-z0-9_]+", text.lower())
+    return {w for w in words if len(w) > 1 and w not in _STOPWORDS}
+
+
+def _find_relevant_memories(task: str, memories: list[dict], max_results: int = 5) -> list[dict]:
+    task_kw = _extract_keywords(task)
+    if not task_kw:
+        return memories[:max_results]
+    scored = []
+    for mem in memories:
+        mem_text = f"{mem.get('task', '')} {mem.get('result', '')}"
+        mem_kw = _extract_keywords(mem_text)
+        overlap = len(task_kw & mem_kw)
+        if overlap > 0:
+            scored.append((overlap, mem))
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return [m for _, m in scored[:max_results]]
+
+
 class LLMPlanner:
     def __init__(self, client: DashScopeLLMClient, long_term_memory=None):
         self._client = client
@@ -153,17 +188,18 @@ class LLMPlanner:
 
         system_prompt = build_system_prompt(tools)
         if self._ltm:
-            memories = self._ltm.list_keys()
-            if memories:
-                past_lines = ["\n\nPAST EXPERIENCES (from previous tasks):"]
-                for key in memories:
-                    mem = self._ltm.load(key)
-                    if mem:
+            keys = self._ltm.list_keys()
+            if keys:
+                all_mems = [m for m in (self._ltm.load(k) for k in keys) if m]
+                relevant = _find_relevant_memories(task, all_mems)
+                if relevant:
+                    past_lines = ["\n\nRELEVANT PAST EXPERIENCES:"]
+                    for mem in relevant:
                         past_lines.append(
-                            f"- [{mem.get('task', key)}] "
+                            f"- [{mem.get('task', '?')}] "
                             f"result: {mem.get('result', 'N/A')}"
                         )
-                system_prompt += "\n".join(past_lines)
+                    system_prompt += "\n".join(past_lines)
 
         if session_memory:
             if session_memory.maybe_compress(self._client) and on_compression:

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
+from pathlib import Path
 
 
 @dataclass
@@ -89,3 +91,29 @@ class SessionMemory:
     def clear(self) -> None:
         self._messages.clear()
         self._summary = ""
+
+    def save_to_disk(self, conversation_id: str, store_dir: str) -> None:
+        data = {
+            "messages": self._messages,
+            "summary": self._summary,
+        }
+        path = Path(store_dir) / f"{conversation_id}.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data, ensure_ascii=False, indent=2))
+
+    def load_from_disk(self, conversation_id: str, store_dir: str) -> bool:
+        path = Path(store_dir) / f"{conversation_id}.json"
+        if not path.exists():
+            return False
+        try:
+            data = json.loads(path.read_text())
+            self._messages = data.get("messages", [])
+            self._summary = data.get("summary", "")
+            return True
+        except Exception:
+            return False
+
+    def delete_from_disk(self, conversation_id: str, store_dir: str) -> None:
+        path = Path(store_dir) / f"{conversation_id}.json"
+        if path.exists():
+            path.unlink()

@@ -175,3 +175,63 @@ def grep_files(directory: str, pattern: str, recursive: bool = True, max_results
 
     except Exception as e:
         return ToolResult(success=False, output="", error=str(e))
+
+
+@tool("Creates a directory (and parent directories if needed)")
+def mkdir(path: str) -> ToolResult:
+    try:
+        p = Path(path)
+        p.mkdir(parents=True, exist_ok=True)
+        return ToolResult(success=True, output=f"created directory: {path}")
+    except PermissionError:
+        return ToolResult(success=False, output="", error=f"permission denied: {path}")
+    except Exception as e:
+        return ToolResult(success=False, output="", error=str(e))
+
+
+@tool("Moves or renames a file or directory")
+def mv_file(source: str, destination: str) -> ToolResult:
+    try:
+        src = Path(source)
+        if not src.exists():
+            return ToolResult(success=False, output="", error=f"source not found: {source}")
+        import shutil
+        dest = Path(destination)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(src), str(dest))
+        return ToolResult(success=True, output=f"moved {source} -> {destination}")
+    except PermissionError:
+        return ToolResult(success=False, output="", error=f"permission denied")
+    except Exception as e:
+        return ToolResult(success=False, output="", error=str(e))
+
+
+@tool("Copies a file or directory")
+def cp_file(source: str, destination: str) -> ToolResult:
+    try:
+        src = Path(source)
+        if not src.exists():
+            return ToolResult(success=False, output="", error=f"source not found: {source}")
+        import shutil
+        shutil.copy2(str(src), str(destination))
+        return ToolResult(success=True, output=f"copied {source} -> {destination}")
+    except PermissionError:
+        return ToolResult(success=False, output="", error=f"permission denied")
+    except Exception as e:
+        return ToolResult(success=False, output="", error=str(e))
+
+
+@tool("Deletes a file. Refuses to delete directories or non-existent files.")
+def rm_file(path: str) -> ToolResult:
+    try:
+        p = Path(path)
+        if not p.exists():
+            return ToolResult(success=False, output="", error=f"file not found: {path}")
+        if p.is_dir():
+            return ToolResult(success=False, output="", error="refusing to delete directory, use execute_command('rm -rf') instead")
+        p.unlink()
+        return ToolResult(success=True, output=f"deleted: {path}")
+    except PermissionError:
+        return ToolResult(success=False, output="", error=f"permission denied: {path}")
+    except Exception as e:
+        return ToolResult(success=False, output="", error=str(e))

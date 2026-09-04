@@ -21,6 +21,7 @@ from src.llm.planner import LLMDevAgent
 from src.tools import (
     read_file, write_file, list_files, edit_file,
     search_in_file, grep_files,
+    mkdir, mv_file, cp_file, rm_file,
     execute_command, git_status, git_init, git_add_commit,
     get_tool_metadata, tool,
 )
@@ -44,6 +45,7 @@ def favicon():
 
 _ACTIVE_RUNS: dict[str, "AgentRun"] = {}
 _CONVERSATIONS: dict[str, SessionMemory] = {}
+_CONVERSATIONS_DIR = str(PROJECT_ROOT / "conversations")
 _LONG_TERM_MEMORY = LongTermMemory(store_dir=str(PROJECT_ROOT / "memories"))
 
 
@@ -79,6 +81,10 @@ def _build_agent(use_llm: bool, session_memory: SessionMemory | None = None) -> 
         "edit_file": edit_file,
         "search_in_file": search_in_file,
         "grep_files": grep_files,
+        "mkdir": mkdir,
+        "mv_file": mv_file,
+        "cp_file": cp_file,
+        "rm_file": rm_file,
         "execute_command": execute_command,
         "git_status": git_status,
         "git_init": git_init,
@@ -108,13 +114,27 @@ def _build_agent(use_llm: bool, session_memory: SessionMemory | None = None) -> 
     )
 
 
+def _get_conversation(conversation_id: str) -> SessionMemory:
+    if conversation_id in _CONVERSATIONS:
+        return _CONVERSATIONS[conversation_id]
+    memory = SessionMemory()
+    if memory.load_from_disk(conversation_id, _CONVERSATIONS_DIR):
+        _CONVERSATIONS[conversation_id] = memory
+        return memory
+    memory = SessionMemory()
+    _CONVERSATIONS[conversation_id] = memory
+    return memory
+
+
+def _save_conversation(conversation_id: str) -> None:
+    memory = _CONVERSATIONS.get(conversation_id)
+    if memory:
+        memory.save_to_disk(conversation_id, _CONVERSATIONS_DIR)
+
+
 def _run_agent_in_thread(run: AgentRun, use_llm: bool = True, conversation_id: str | None = None) -> None:
     try:
-        session_memory = _CONVERSATIONS.get(conversation_id) if conversation_id else None
-        if session_memory is None:
-            session_memory = SessionMemory()
-            if conversation_id:
-                _CONVERSATIONS[conversation_id] = session_memory
+        session_memory = _get_conversation(conversation_id) if conversation_id else None
         agent = _build_agent(use_llm, session_memory=session_memory)
         run.emit("agent_start", {"task": run.task, "tools": agent.available_tools(), "use_llm": use_llm, "conversation_id": conversation_id})
 
@@ -184,6 +204,8 @@ def _run_agent_in_thread(run: AgentRun, use_llm: bool = True, conversation_id: s
             "result": result.final_state.result,
             "conversation_id": conversation_id,
         })
+        if conversation_id:
+            _save_conversation(conversation_id)
         run.final_result = result
         run.done = True
     except Exception as e:
@@ -207,6 +229,8 @@ def _run_agent_in_thread(run: AgentRun, use_llm: bool = True, conversation_id: s
             "result": f"Error: {e}",
             "conversation_id": conversation_id,
         })
+        if conversation_id:
+            _save_conversation(conversation_id)
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -214,6 +238,7 @@ async def index(request: Request):
     tools_list = []
     _base_tools = {"read_file": read_file, "write_file": write_file, "list_files": list_files,
                    "edit_file": edit_file, "search_in_file": search_in_file, "grep_files": grep_files,
+                   "mkdir": mkdir, "mv_file": mv_file, "cp_file": cp_file, "rm_file": rm_file,
                    "execute_command": execute_command, "git_status": git_status,
                    "git_init": git_init, "git_add_commit": git_add_commit}
     for name in list(_base_tools.keys()):
@@ -374,3 +399,50 @@ async def clear_memories():
     for key in keys:
         _LONG_TERM_MEMORY.delete(key)
     return {"deleted": len(keys)}
+
+
+@app.get("/api/conversations")
+async def list_conversations():
+    store = Path(_CONVERSATIONS_DIR)
+    if not store.exists():
+        return []
+    convs = []
+    for f in sorted(store.glob("*.json"), key=lambda x: x.stat().st_mtime, reverse=True):
+        try:
+            data = json.loads(f.read_text())
+            msgs = data.get("messages", [])
+            first_user = next((m["content"] for m in msgs if m.get("role") == "user"), "")
+            convs.append({
+                "id": f.stem,
+                "messages": len(msgs),
+                "has_summary": bool(data.get("summary")),
+                "first_task": first_user[:80],
+                "updated": f.stat().st_mtime,
+            })
+        except Exception:
+            continue
+    return convs
+
+
+@app.delete("/api/conversations/{conv_id}")
+async def delete_conversation(conv_id: str):
+    _CONVERSATIONS.pop(conv_id, None)
+    path = Path(_CONVERSATIONS_DIR) / f"{conv_id}.json"
+    if not path.exists():
+        return {"error": "conversation not found"}
+    path.unlink()
+    return {"deleted": conv_id}
+
+
+@app.delete("/api/conversations")
+async def clear_conversations():
+    store = Path(_CONVERSATIONS_DIR)
+    if not store.exists():
+        return {"deleted": 0}
+    count = 0
+    for f in store.glob("*.json"):
+        conv_id = f.stem
+        _CONVERSATIONS.pop(conv_id, None)
+        f.unlink()
+        count += 1
+    return {"deleted": count}

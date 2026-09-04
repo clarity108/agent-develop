@@ -9,7 +9,8 @@ from src.harness.tracer import ExecutionTrace
 from src.llm.config import load_config, build_client
 from src.llm.planner import LLMDevAgent
 from src.tools import (
-    read_file, write_file, list_files,
+    read_file, write_file, list_files, edit_file, search_in_file, grep_files,
+    mkdir, mv_file, cp_file, rm_file,
     execute_command, git_status, git_init, git_add_commit,
 )
 from src.loop.feedback import FeedbackLoop, PytestRunner
@@ -27,6 +28,13 @@ def build_llm_agent():
         "read_file": read_file,
         "write_file": write_file,
         "list_files": list_files,
+        "edit_file": edit_file,
+        "search_in_file": search_in_file,
+        "grep_files": grep_files,
+        "mkdir": mkdir,
+        "mv_file": mv_file,
+        "cp_file": cp_file,
+        "rm_file": rm_file,
         "execute_command": execute_command,
         "git_status": git_status,
         "git_init": git_init,
@@ -66,6 +74,13 @@ def build_rule_agent() -> RuleBasedDevAgent:
             "read_file": read_file,
             "write_file": write_file,
             "list_files": list_files,
+            "edit_file": edit_file,
+            "search_in_file": search_in_file,
+            "grep_files": grep_files,
+            "mkdir": mkdir,
+            "mv_file": mv_file,
+            "cp_file": cp_file,
+            "rm_file": rm_file,
             "execute_command": execute_command,
             "git_status": git_status,
             "git_init": git_init,
@@ -108,9 +123,16 @@ def main():
     parser.add_argument("--rule", action="store_true", help="Use rule-based agent instead of LLM")
     parser.add_argument("--test", action="store_true", help="Run agent then pytest")
     parser.add_argument("--serve", action="store_true", help="Start the web console (uvicorn)")
+    parser.add_argument("--eval", action="store_true", help="Run evaluation benchmarks")
     parser.add_argument("--host", default="127.0.0.1", help="Web server host (--serve)")
     parser.add_argument("--port", type=int, default=8000, help="Web server port (--serve)")
     args = parser.parse_args()
+
+    if args.eval:
+        from src.eval.runner import run_eval
+        results = run_eval()
+        passed = sum(1 for r in results if r.success)
+        sys.exit(0 if passed == len(results) else 1)
 
     if args.serve:
         if uvicorn is None:
