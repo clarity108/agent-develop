@@ -135,12 +135,15 @@ class LLMDevAgent(DevAgent):
         client: DashScopeLLMClient,
         tools: dict | None = None,
         max_steps: int = 20,
+        session_memory: "SessionMemory" | None = None,
     ):
         from src.memory.session import SessionMemory
+        if session_memory is None:
+            session_memory = SessionMemory()
         super().__init__(
             tools=tools,
             max_steps=max_steps,
-            session_memory=SessionMemory(),
+            session_memory=session_memory,
         )
         self._client = client
         self._planner = LLMPlanner(client)
