@@ -18,7 +18,7 @@ from src.agent.core import RuleBasedDevAgent, DevAgent, AgentResult
 from src.llm.config import load_config, build_client
 from src.llm.planner import LLMDevAgent
 from src.tools import (
-    read_file, write_file, list_files,
+    read_file, write_file, list_files, edit_file,
     execute_command, git_status, git_init, git_add_commit,
     get_tool_metadata, tool,
 )
@@ -74,6 +74,7 @@ def _build_agent(use_llm: bool, session_memory: SessionMemory | None = None) -> 
         "read_file": read_file,
         "write_file": write_file,
         "list_files": list_files,
+        "edit_file": edit_file,
         "execute_command": execute_command,
         "git_status": git_status,
         "git_init": git_init,
@@ -203,10 +204,10 @@ def _run_agent_in_thread(run: AgentRun, use_llm: bool = True, conversation_id: s
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     tools_list = []
-    for name in ["read_file", "write_file", "list_files",
+    for name in ["read_file", "write_file", "list_files", "edit_file",
                   "execute_command", "git_status", "git_init", "git_add_commit"]:
         fn = {"read_file": read_file, "write_file": write_file, "list_files": list_files,
-              "execute_command": execute_command, "git_status": git_status,
+              "edit_file": edit_file, "execute_command": execute_command, "git_status": git_status,
               "git_init": git_init, "git_add_commit": git_add_commit}[name]
         meta = get_tool_metadata(fn)
         tools_list.append({

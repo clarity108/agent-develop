@@ -51,3 +51,42 @@ def list_files(directory: str, recursive: bool = False) -> ToolResult:
         return ToolResult(success=True, output="\n".join(names))
     except Exception as e:
         return ToolResult(success=False, output="", error=str(e))
+
+
+@tool("Edits a file by replacing old_text with new_text. old_text must match exactly (including whitespace and newlines). If old_text appears multiple times, use replace_all=True or provide more surrounding context for a unique match.")
+def edit_file(path: str, old_text: str, new_text: str, replace_all: bool = False) -> ToolResult:
+    try:
+        if not old_text:
+            return ToolResult(success=False, output="", error="old_text is empty")
+
+        p = Path(path)
+        if not p.exists():
+            return ToolResult(success=False, output="", error=f"file not found: {path}")
+
+        content = p.read_text()
+        count = content.count(old_text)
+
+        if count == 0:
+            return ToolResult(
+                success=False,
+                output="",
+                error=f"old_text not found in {path}. Read the file first and copy the exact text to replace.",
+            )
+
+        if count > 1 and not replace_all:
+            return ToolResult(
+                success=False,
+                output="",
+                error=f"old_text found {count} times in {path}. Provide more surrounding context for a unique match, or set replace_all=True.",
+            )
+
+        new_content = content.replace(old_text, new_text) if replace_all else content.replace(old_text, new_text, 1)
+        p.write_text(new_content)
+
+        replacements = count if replace_all else 1
+        return ToolResult(success=True, output=f"replaced {replacements} occurrence(s) in {path}")
+
+    except PermissionError:
+        return ToolResult(success=False, output="", error=f"permission denied: {path}")
+    except Exception as e:
+        return ToolResult(success=False, output="", error=str(e))
