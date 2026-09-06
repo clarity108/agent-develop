@@ -179,6 +179,7 @@ class LLMPlanner:
         session_memory=None,
         context: str = "",
         on_compression=None,
+        on_token=None,
     ) -> Decision:
         tools: dict = {}
         if isinstance(available_tools, dict):
@@ -226,6 +227,12 @@ class LLMPlanner:
         messages.append(AgentMessage(role="user", content=user_content))
 
         tool_defs = build_tools_list(tools)
+
+        if on_token:
+            return self._plan_stream(
+                messages, tool_defs, step, on_token,
+            )
+
         resp = self._client.chat(messages, tools=tool_defs)
 
         if resp.error:
@@ -249,6 +256,49 @@ class LLMPlanner:
             return decision
 
         decision = self._parse_decision(resp.content)
+        decision.thought = f"Step {step}: {decision.thought}"
+        return decision
+
+    def _plan_stream(self, messages, tool_defs, step, on_token) -> Decision:
+        from .client import StreamChunk, ChatResponse
+        full_content = ""
+        tool_calls = []
+        error = None
+
+        for chunk in self._client.stream_chat(messages, tools=tool_defs):
+            if isinstance(chunk, ChatResponse):
+                error = chunk.error
+                break
+            if isinstance(chunk, StreamChunk):
+                if chunk.content:
+                    full_content += chunk.content
+                    on_token(chunk.content)
+                if chunk.tool_calls:
+                    tool_calls = chunk.tool_calls
+                if chunk.done:
+                    break
+
+        if error:
+            return Decision(
+                thought=f"LLM error: {error}",
+                action="answer",
+                answer=f"Sorry, I encountered an error: {error}",
+            )
+
+        if tool_calls:
+            tc = tool_calls[0]
+            decision = Decision(
+                thought=f"Native tool call: {tc.function_name}",
+                action="use_tool",
+                tool_name=tc.function_name,
+                tool_args=tc.function_args,
+                answer="",
+                tool_call_id=tc.id,
+            )
+            decision.thought = f"Step {step}: {decision.thought}"
+            return decision
+
+        decision = self._parse_decision(full_content)
         decision.thought = f"Step {step}: {decision.thought}"
         return decision
 
@@ -292,11 +342,12 @@ class LLMDevAgent(DevAgent):
         self._client = client
         self._planner = LLMPlanner(client, long_term_memory=long_term_memory)
 
-    def _plan(self, task: str, step: int, on_compression=None) -> Decision:
+    def _plan(self, task: str, step: int, on_compression=None, on_token=None) -> Decision:
         return self._planner.plan(
             task,
             step,
             available_tools=self._tools,
             session_memory=self._session_memory,
             on_compression=on_compression,
+            on_token=on_token,
         )

@@ -1607,6 +1607,61 @@ html, body {
   background: rgba(196, 90, 75, 0.1);
 }
 
+/* STREAM BLOCK — real-time LLM token output */
+
+.stream-block {
+  margin: var(--s2) 0;
+  padding: var(--s2) var(--s3);
+  border-left: 2px solid var(--accent);
+  background: rgba(212, 160, 48, 0.04);
+  animation: fade-slide 0.2s ease-out;
+}
+
+.stream-prefix {
+  font-size: 10px;
+  color: var(--accent);
+  margin-bottom: var(--s1);
+  letter-spacing: 0.5px;
+}
+
+.stream-body {
+  font-size: 12px;
+  color: var(--ink);
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.6;
+}
+
+.stream-body::after {
+  content: "_";
+  animation: blink-cursor 1s step-end infinite;
+}
+
+@keyframes blink-cursor {
+  50% { opacity: 0; }
+}
+
+/* DIFF OUTPUT — colored unified diff rendering */
+
+.diff-output .diff-add {
+  color: #a8d4a0;
+  background: rgba(122, 154, 110, 0.1);
+}
+
+.diff-output .diff-del {
+  color: #e8a0a0;
+  background: rgba(196, 90, 75, 0.1);
+}
+
+.diff-output .diff-hunk {
+  color: var(--steel);
+  font-weight: 600;
+}
+
+.diff-output .diff-context {
+  color: var(--ink-dim);
+}
+
 /* ============================================================
    RESPONSIVE
    ============================================================ */

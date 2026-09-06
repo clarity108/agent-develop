@@ -11,7 +11,10 @@ from src.llm.planner import LLMDevAgent
 from src.tools import (
     read_file, write_file, list_files, edit_file, search_in_file, grep_files,
     mkdir, mv_file, cp_file, rm_file,
-    execute_command, git_status, git_init, git_add_commit,
+    execute_command, execute_sandbox, execute_python, list_env,
+    diff_file, apply_patch, preview_diff,
+    create_generate_tests_tool, create_generate_tests_inline_tool,
+    git_status, git_init, git_add_commit,
 )
 from src.loop.feedback import FeedbackLoop, PytestRunner
 
@@ -36,6 +39,14 @@ def build_llm_agent():
         "cp_file": cp_file,
         "rm_file": rm_file,
         "execute_command": execute_command,
+        "execute_sandbox": execute_sandbox,
+        "execute_python": execute_python,
+        "list_env": list_env,
+        "diff_file": diff_file,
+        "apply_patch": apply_patch,
+        "preview_diff": preview_diff,
+        "generate_tests": create_generate_tests_tool(client),
+        "generate_tests_inline": create_generate_tests_inline_tool(client),
         "git_status": git_status,
         "git_init": git_init,
         "git_add_commit": git_add_commit,
@@ -82,6 +93,12 @@ def build_rule_agent() -> RuleBasedDevAgent:
             "cp_file": cp_file,
             "rm_file": rm_file,
             "execute_command": execute_command,
+            "execute_sandbox": execute_sandbox,
+            "execute_python": execute_python,
+            "list_env": list_env,
+            "diff_file": diff_file,
+            "apply_patch": apply_patch,
+            "preview_diff": preview_diff,
             "git_status": git_status,
             "git_init": git_init,
             "git_add_commit": git_add_commit,
@@ -143,8 +160,10 @@ def main():
             "read_file": read_file, "write_file": write_file, "list_files": list_files,
             "edit_file": edit_file, "search_in_file": search_in_file, "grep_files": grep_files,
             "mkdir": mkdir, "mv_file": mv_file, "cp_file": cp_file, "rm_file": rm_file,
-            "execute_command": execute_command, "git_status": git_status,
-            "git_init": git_init, "git_add_commit": git_add_commit,
+            "execute_command": execute_command, "execute_sandbox": execute_sandbox,
+            "execute_python": execute_python, "list_env": list_env,
+            "diff_file": diff_file, "apply_patch": apply_patch, "preview_diff": preview_diff,
+            "git_status": git_status, "git_init": git_init, "git_add_commit": git_add_commit,
         }
 
         def on_plan(plan):

@@ -28,6 +28,13 @@ class UsageInfo:
 
 
 @dataclass
+class StreamChunk:
+    content: str = ""
+    tool_calls: list[ToolCall] | None = None
+    done: bool = False
+
+
+@dataclass
 class ChatResponse:
     role: str = "assistant"
     content: str = ""
@@ -143,3 +150,65 @@ class DashScopeLLMClient:
             return ChatResponse(content="", error=str(e))
         except (KeyError, IndexError, ValueError) as e:
             return ChatResponse(content="", error=f"unexpected response format: {e}")
+
+    def stream_chat(self, messages, tools=None, **extra):
+        url = f"{self.base_url}/chat/completions"
+        headers = self._build_headers()
+        body = self._build_body(messages, tools=tools, **extra)
+        body["stream"] = True
+
+        try:
+            with httpx.Client(timeout=self.timeout) as client:
+                with client.stream("POST", url, json=body, headers=headers) as resp:
+                    if resp.status_code != 200:
+                        data = resp.read().json()
+                        error_msg = data.get("error", {}).get("message", f"HTTP {resp.status_code}")
+                        yield ChatResponse(content="", error=error_msg)
+                        return
+
+                    accumulated_tool_calls: list[ToolCall] = []
+                    for line in resp.iter_lines():
+                        if not line.startswith("data: "):
+                            continue
+                        payload = line[6:].strip()
+                        if payload == "[DONE]":
+                            if accumulated_tool_calls:
+                                yield StreamChunk(done=True, tool_calls=accumulated_tool_calls)
+                            else:
+                                yield StreamChunk(done=True)
+                            return
+
+                        try:
+                            data = json.loads(payload)
+                        except json.JSONDecodeError:
+                            continue
+
+                        choice = data.get("choices", [{}])[0]
+                        delta = choice.get("delta", {})
+                        content = delta.get("content", "")
+                        tool_calls_delta = delta.get("tool_calls", [])
+
+                        if content:
+                            yield StreamChunk(content=content)
+
+                        if tool_calls_delta:
+                            for tc_delta in tool_calls_delta:
+                                tc_id = tc_delta.get("id", "")
+                                fn = tc_delta.get("function", {})
+                                fn_name = fn.get("name", "")
+                                fn_args_str = fn.get("arguments", "")
+                                if tc_id and fn_name:
+                                    try:
+                                        fn_args = json.loads(fn_args_str) if fn_args_str else {}
+                                    except (json.JSONDecodeError, TypeError):
+                                        fn_args = {}
+                                    accumulated_tool_calls.append(ToolCall(
+                                        id=tc_id, type="function",
+                                        function_name=fn_name, function_args=fn_args,
+                                    ))
+
+                    yield StreamChunk(done=True, tool_calls=accumulated_tool_calls or None)
+        except (httpx.HTTPError, ConnectionError, TimeoutError) as e:
+            yield ChatResponse(content="", error=str(e))
+        except (KeyError, IndexError, ValueError) as e:
+            yield ChatResponse(content="", error=f"unexpected response format: {e}")

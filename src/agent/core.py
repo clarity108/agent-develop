@@ -85,14 +85,14 @@ class DevAgent:
     def available_tools(self) -> list[str]:
         return sorted(self._tools.keys())
 
-    def _plan(self, task: str, step: int, on_compression=None) -> Decision:
+    def _plan(self, task: str, step: int, on_compression=None, on_token=None) -> Decision:
         return Decision(
             thought="No planner configured",
             action="answer",
             answer="No planning strategy available.",
         )
 
-    def run(self, task: str, on_step=None, cancel_check=None, on_compression=None, confirmation_check=None) -> AgentResult:
+    def run(self, task: str, on_step=None, cancel_check=None, on_compression=None, confirmation_check=None, on_token=None) -> AgentResult:
         self._state = AgentState(max_steps=self._max_steps)
         self._state.thought = f"Starting task: {task}"
 
@@ -105,7 +105,7 @@ class DevAgent:
                 self._state.done = True
                 break
             self._state.step = step
-            decision = self._plan(task, step, on_compression=on_compression)
+            decision = self._plan(task, step, on_compression=on_compression, on_token=on_token)
             self._state.thought = decision.thought
             self._state.action = decision.action
 
@@ -250,5 +250,5 @@ class RuleBasedDevAgent(DevAgent):
     def rules(self) -> list[dict]:
         return self._planner.rules
 
-    def _plan(self, task: str, step: int, on_compression=None) -> Decision:
+    def _plan(self, task: str, step: int, on_compression=None, on_token=None) -> Decision:
         return self._planner.plan(task, step)

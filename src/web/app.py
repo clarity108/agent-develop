@@ -23,7 +23,10 @@ from src.tools import (
     read_file, write_file, list_files, edit_file,
     search_in_file, grep_files,
     mkdir, mv_file, cp_file, rm_file,
-    execute_command, git_status, git_init, git_add_commit,
+    execute_command, execute_sandbox, execute_python, list_env,
+    diff_file, apply_patch, preview_diff,
+    create_generate_tests_tool, create_generate_tests_inline_tool,
+    git_status, git_init, git_add_commit,
     get_tool_metadata, tool,
 )
 from src.tools.metadata import ToolMetadata
@@ -112,6 +115,12 @@ def _base_tools() -> dict:
         "cp_file": cp_file,
         "rm_file": rm_file,
         "execute_command": execute_command,
+        "execute_sandbox": execute_sandbox,
+        "execute_python": execute_python,
+        "list_env": list_env,
+        "diff_file": diff_file,
+        "apply_patch": apply_patch,
+        "preview_diff": preview_diff,
         "git_status": git_status,
         "git_init": git_init,
         "git_add_commit": git_add_commit,
@@ -127,6 +136,8 @@ def _build_agent(use_llm: bool, session_memory: SessionMemory | None = None) -> 
             client=client, tools=tools, long_term_memory=_LONG_TERM_MEMORY,
         )
         tools["delegate_task"] = delegate_fn
+        tools["generate_tests"] = create_generate_tests_tool(client)
+        tools["generate_tests_inline"] = create_generate_tests_inline_tool(client)
         return LLMDevAgent(
             client=client, tools=tools, session_memory=session_memory,
             long_term_memory=_LONG_TERM_MEMORY,
@@ -268,6 +279,9 @@ def _run_agent_in_thread(run: AgentRun, use_llm: bool = True, conversation_id: s
             run.emit("approval_resolved", {"approved": approved, "tool_name": tool_name})
             return approved
 
+        def on_token(token: str):
+            run.emit("token", {"text": token})
+
         result = agent.run(
             run.task,
             on_step=on_step,
@@ -276,6 +290,7 @@ def _run_agent_in_thread(run: AgentRun, use_llm: bool = True, conversation_id: s
                 "messages": msgs, "summary_length": slen,
             }),
             confirmation_check=confirmation_check,
+            on_token=on_token,
         )
 
         run.emit("agent_done", {
@@ -335,11 +350,7 @@ def _run_agent_in_thread(run: AgentRun, use_llm: bool = True, conversation_id: s
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     tools_list = []
-    _base_tools = {"read_file": read_file, "write_file": write_file, "list_files": list_files,
-                   "edit_file": edit_file, "search_in_file": search_in_file, "grep_files": grep_files,
-                   "mkdir": mkdir, "mv_file": mv_file, "cp_file": cp_file, "rm_file": rm_file,
-                   "execute_command": execute_command, "git_status": git_status,
-                   "git_init": git_init, "git_add_commit": git_add_commit}
+    _base_tools = _base_tools()
     for name in list(_base_tools.keys()):
         fn = _base_tools[name]
         meta = get_tool_metadata(fn)
@@ -350,6 +361,14 @@ async def index(request: Request):
     tools_list.append({
         "name": "delegate_task",
         "description": "Delegates a sub-task to a sub-agent that runs independently with a fresh context",
+    })
+    tools_list.append({
+        "name": "generate_tests",
+        "description": "Generates pytest test cases for a Python source file using LLM analysis",
+    })
+    tools_list.append({
+        "name": "generate_tests_inline",
+        "description": "Generates pytest test code from inline source code using LLM analysis",
     })
 
     _rules = _build_agent(False).rules

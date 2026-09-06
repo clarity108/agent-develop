@@ -24,7 +24,9 @@ def _build_eval_agent(benchmark: Benchmark):
     from src.tools import (
         read_file, write_file, list_files, edit_file,
         search_in_file, grep_files, mkdir, mv_file, cp_file, rm_file,
-        execute_command, git_status, git_init, git_add_commit,
+        execute_command, execute_sandbox, execute_python, list_env,
+        diff_file, apply_patch, preview_diff,
+        git_status, git_init, git_add_commit,
     )
 
     tools = {
@@ -39,6 +41,12 @@ def _build_eval_agent(benchmark: Benchmark):
         "cp_file": cp_file,
         "rm_file": rm_file,
         "execute_command": execute_command,
+        "execute_sandbox": execute_sandbox,
+        "execute_python": execute_python,
+        "list_env": list_env,
+        "diff_file": diff_file,
+        "apply_patch": apply_patch,
+        "preview_diff": preview_diff,
         "git_status": git_status,
         "git_init": git_init,
         "git_add_commit": git_add_commit,

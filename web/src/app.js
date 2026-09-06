@@ -127,6 +127,23 @@
     }, 3000);
   }
 
+  function isDiffOutput(text) {
+    return text.startsWith("---") || text.startsWith("@@") || text.indexOf("\n---") === 0 || text.indexOf("\n@@") !== -1;
+  }
+
+  function renderDiffLine(line) {
+    if (line.startsWith("+") && !line.startsWith("+++")) {
+      return '<span class="diff-add">' + esc(line) + '</span>';
+    }
+    if (line.startsWith("-") && !line.startsWith("---")) {
+      return '<span class="diff-del">' + esc(line) + '</span>';
+    }
+    if (line.startsWith("@@")) {
+      return '<span class="diff-hunk">' + esc(line) + '</span>';
+    }
+    return '<span class="diff-context">' + esc(line) + '</span>';
+  }
+
   function appendToolResult(block, data) {
     var text = data.output || (data.error || "");
     var lines = text.split("\n");
@@ -141,7 +158,14 @@
 
     var body = document.createElement("pre");
     body.className = "trace-result-body";
-    body.textContent = text;
+
+    if (isDiffOutput(text)) {
+      body.classList.add("diff-output");
+      body.innerHTML = lines.map(renderDiffLine).join("\n");
+    } else {
+      body.textContent = text;
+    }
+
     resBlock.appendChild(body);
 
     if (lines.length > MAX_OUTPUT_LINES) {
@@ -269,6 +293,30 @@
       var m = overlay.querySelector(".approval-modal");
       if (m) m.className = "approval-modal";
     }, 600);
+  }
+
+  var streamEl = null;
+
+  function appendToken(text) {
+    var trace = $("#trace");
+    if (!streamEl) {
+      streamEl = document.createElement("div");
+      streamEl.className = "stream-block";
+      streamEl.id = "stream-block";
+      streamEl.innerHTML = '<div class="stream-prefix">▸ streaming</div><div class="stream-body" id="stream-body"></div>';
+      trace.appendChild(streamEl);
+    }
+    var body = $("#stream-body");
+    if (body) {
+      body.textContent += text;
+      trace.scrollTop = trace.scrollHeight;
+    }
+  }
+
+  function clearStream() {
+    streamEl = null;
+    var el = $("#stream-block");
+    if (el) el.remove();
   }
 
   async function cancelRun() {
@@ -410,6 +458,11 @@
         return;
       }
 
+      if (msg.type === "token") {
+        appendToken(msg.data.text);
+        return;
+      }
+
       if (msg.type === "agent_done") {
         var cancelled = msg.data.cancelled;
         setStatus(cancelled ? "cancelled" : (msg.data.success ? "done" : "failed"));
@@ -453,6 +506,8 @@
   function clearTrace() {
     var trace = $("#trace");
     trace.innerHTML = '';
+    streamEl = null;
+    planContainer = null;
     var empty = document.createElement("div");
     empty.className = "trace-empty";
     empty.id = "trace-empty";
