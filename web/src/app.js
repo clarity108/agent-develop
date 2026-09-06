@@ -177,6 +177,100 @@
     block.appendChild(resBlock);
   }
 
+  var planContainer = null;
+
+  function renderPlan(planData) {
+    var trace = $("#trace");
+    if (!planContainer) {
+      planContainer = document.createElement("div");
+      planContainer.className = "plan-container";
+      planContainer.id = "plan-container";
+      trace.appendChild(planContainer);
+    }
+
+    var stepsHtml = '<div class="plan-header">TASK PLAN · ' + planData.completed + '/' + planData.total + ' done</div>';
+    stepsHtml += '<div class="plan-steps">';
+    for (var i = 0; i < planData.steps.length; i++) {
+      var s = planData.steps[i];
+      var statusIcon = s.status === "done" ? "✓" : s.status === "failed" ? "✗" : s.status === "running" ? "→" : "·";
+      var statusClass = s.status === "done" ? " done" : s.status === "failed" ? " failed" : s.status === "running" ? " running" : "";
+      stepsHtml += '<div class="plan-step' + statusClass + '">';
+      stepsHtml += '<span class="plan-step-num">' + (i + 1) + '</span>';
+      stepsHtml += '<span class="plan-step-icon">' + statusIcon + '</span>';
+      stepsHtml += '<span class="plan-step-desc">' + esc(s.description) + '</span>';
+      if (s.result) stepsHtml += '<span class="plan-step-result">' + esc(s.result.slice(0, 60)) + '</span>';
+      stepsHtml += '</div>';
+    }
+    stepsHtml += '</div>';
+    planContainer.innerHTML = stepsHtml;
+    trace.scrollTop = trace.scrollHeight;
+  }
+
+  function appendPlanStepEvent(type, data) {
+    var trace = $("#trace");
+    var el = document.createElement("div");
+    var icon = type === "start" ? "→" : type === "done" ? "✓" : "✗";
+    var cls = type === "done" ? " done" : type === "failed" ? " failed" : "";
+    el.className = "plan-step-event" + cls;
+    var info = type === "failed" ? data.error : data.result || data.description || "";
+    el.innerHTML = '<span class="plan-step-icon">' + icon + '</span><span class="plan-step-event-text">step ' + (data.index + 1) + ': ' + esc(info.slice(0, 80)) + '</span>';
+    trace.appendChild(el);
+    trace.scrollTop = trace.scrollHeight;
+  }
+
+  function showApprovalModal(toolName, toolArgs) {
+    var overlay = $("#approval-overlay");
+    if (!overlay) {
+      overlay = document.createElement("div");
+      overlay.id = "approval-overlay";
+      overlay.innerHTML =
+        '<div class="approval-modal">' +
+        '<div class="approval-header">' +
+        '<span class="approval-icon">⚠</span>' +
+        '<span class="approval-title">Approval Required</span>' +
+        '</div>' +
+        '<div class="approval-body">' +
+        '<div class="approval-tool-name" id="approval-tool-name"></div>' +
+        '<pre class="approval-tool-args" id="approval-tool-args"></pre>' +
+        '</div>' +
+        '<div class="approval-actions">' +
+        '<button class="btn-reject" id="btn-reject">reject</button>' +
+        '<button class="btn-approve" id="btn-approve">approve</button>' +
+        '</div>' +
+        '</div>';
+      document.body.appendChild(overlay);
+
+      $("#btn-approve").addEventListener("click", function () {
+        if (activeRunId) {
+          fetch("/api/runs/" + activeRunId + "/approve", { method: "POST" });
+        }
+      });
+      $("#btn-reject").addEventListener("click", function () {
+        if (activeRunId) {
+          fetch("/api/runs/" + activeRunId + "/reject", { method: "POST" });
+        }
+      });
+    }
+
+    $("#approval-tool-name").textContent = toolName;
+    $("#approval-tool-args").textContent = JSON.stringify(toolArgs, null, 2);
+    overlay.style.display = "flex";
+  }
+
+  function hideApprovalModal(approved) {
+    var overlay = $("#approval-overlay");
+    if (!overlay) return;
+    var modal = overlay.querySelector(".approval-modal");
+    if (modal) {
+      modal.className = "approval-modal" + (approved ? " approved" : " rejected");
+    }
+    setTimeout(function () {
+      overlay.style.display = "none";
+      var m = overlay.querySelector(".approval-modal");
+      if (m) m.className = "approval-modal";
+    }, 600);
+  }
+
   async function cancelRun() {
     if (!activeRunId) return;
     await fetch("/api/runs/" + activeRunId + "/cancel", { method: "POST" });
@@ -261,6 +355,61 @@
         return;
       }
 
+      if (msg.type === "tool_retry") {
+        var elR = document.querySelector('[data-step="' + msg.data.step + '"]');
+        if (elR) {
+          var retryEl = document.createElement("div");
+          retryEl.className = "trace-retry-indicator";
+          retryEl.innerHTML =
+            '<span class="retry-icon">↻</span>' +
+            '<span class="retry-text">retry ' + msg.data.attempt + '/' + msg.data.max_attempts +
+            ' · ' + esc(msg.data.error) + '</span>';
+          elR.appendChild(retryEl);
+          $("#trace").scrollTop = $("#trace").scrollHeight;
+        }
+        return;
+      }
+
+      if (msg.type === "plan_update") {
+        renderPlan(msg.data);
+        return;
+      }
+
+      if (msg.type === "plan_step_start") {
+        appendPlanStepEvent("start", msg.data);
+        return;
+      }
+
+      if (msg.type === "plan_step_done") {
+        appendPlanStepEvent("done", msg.data);
+        return;
+      }
+
+      if (msg.type === "plan_step_failed") {
+        appendPlanStepEvent("failed", msg.data);
+        return;
+      }
+
+      if (msg.type === "plan_revised") {
+        var trace = $("#trace");
+        var revEl = document.createElement("div");
+        revEl.className = "trace-retry-indicator";
+        revEl.innerHTML = '<span class="retry-icon">↻</span><span class="retry-text">plan revised · ' + msg.data.total_steps + ' steps</span>';
+        trace.appendChild(revEl);
+        trace.scrollTop = trace.scrollHeight;
+        return;
+      }
+
+      if (msg.type === "approval_requested") {
+        showApprovalModal(msg.data.tool_name, msg.data.tool_args);
+        return;
+      }
+
+      if (msg.type === "approval_resolved") {
+        hideApprovalModal(msg.data.approved);
+        return;
+      }
+
       if (msg.type === "agent_done") {
         var cancelled = msg.data.cancelled;
         setStatus(cancelled ? "cancelled" : (msg.data.success ? "done" : "failed"));
@@ -331,8 +480,9 @@
     $("#trace-task").textContent = task;
     setStatus("running");
     var useLlm = $("#use-llm").checked ? "on" : "off";
+    var usePlan = $("#use-plan") && $("#use-plan").checked ? "on" : "off";
 
-    var params = { task: task, use_llm: useLlm };
+    var params = { task: task, use_llm: useLlm, use_plan: usePlan };
     if (activeConversationId) params.conversation_id = activeConversationId;
 
     var res = await fetch("/api/runs", {
@@ -727,6 +877,14 @@ document.addEventListener("DOMContentLoaded", function () {
       $("#agent-type").textContent = this.checked ? "LLM" : "rule-based";
       updateModeHint(this.checked);
     });
+
+    var planToggle = $("#use-plan");
+    if (planToggle) {
+      planToggle.addEventListener("change", function () {
+        var planText = $("#plan-text");
+        if (planText) planText.textContent = this.checked ? "on" : "off";
+      });
+    }
 
     updateModeHint($("#use-llm").checked);
     refreshHistory();

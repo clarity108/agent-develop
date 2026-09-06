@@ -124,6 +124,7 @@ def main():
     parser.add_argument("--test", action="store_true", help="Run agent then pytest")
     parser.add_argument("--serve", action="store_true", help="Start the web console (uvicorn)")
     parser.add_argument("--eval", action="store_true", help="Run evaluation benchmarks")
+    parser.add_argument("--plan", action="store_true", help="Generate and execute a multi-step plan before acting")
     parser.add_argument("--host", default="127.0.0.1", help="Web server host (--serve)")
     parser.add_argument("--port", type=int, default=8000, help="Web server port (--serve)")
     args = parser.parse_args()
@@ -133,6 +134,41 @@ def main():
         results = run_eval()
         passed = sum(1 for r in results if r.success)
         sys.exit(0 if passed == len(results) else 1)
+
+    if args.plan:
+        from src.agent.task_planner import run_plan
+        config = load_config("config/default.yaml")
+        client = build_client(config["llm"])
+        tools = {
+            "read_file": read_file, "write_file": write_file, "list_files": list_files,
+            "edit_file": edit_file, "search_in_file": search_in_file, "grep_files": grep_files,
+            "mkdir": mkdir, "mv_file": mv_file, "cp_file": cp_file, "rm_file": rm_file,
+            "execute_command": execute_command, "git_status": git_status,
+            "git_init": git_init, "git_add_commit": git_add_commit,
+        }
+
+        def on_plan(plan):
+            print(f"\n  [{'✓' if s.status == 'done' else '✗' if s.status == 'failed' else '→' if s.status == 'running' else '·'}] {s.index+1}. {s.description}")
+
+        def on_step_event(event, idx, info):
+            if event == "plan_step_start":
+                print(f"  → executing step {idx+1}: {info}")
+            elif event == "plan_step_done":
+                print(f"  ✓ step {idx+1} done")
+            elif event == "plan_step_failed":
+                print(f"  ✗ step {idx+1} failed: {info}")
+            elif event == "plan_revised":
+                print(f"  ↻ plan revised ({info} steps)")
+
+        print(f"\n{'='*60}")
+        print(f"TASK PLAN: {args.task}")
+        print(f"{'='*60}\n")
+        plan, success = run_plan(args.task, tools, client, on_plan=on_plan, on_step_event=on_step_event)
+
+        print(f"\n{'='*60}")
+        print(f"RESULT: {'PASS' if success else 'FAIL'} ({plan.completed}/{plan.total_steps} steps)")
+        print(f"{'='*60}\n")
+        sys.exit(0 if success else 1)
 
     if args.serve:
         if uvicorn is None:

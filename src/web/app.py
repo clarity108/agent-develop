@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import threading
 import time
@@ -56,6 +57,30 @@ class TraceEvent:
     ts: float = field(default_factory=time.time)
 
 
+class _ApprovalGate:
+    def __init__(self):
+        self._event = threading.Event()
+        self._approved = False
+        self._pending = False
+
+    @property
+    def pending(self) -> bool:
+        return self._pending
+
+    def wait(self, timeout: float = 120) -> bool:
+        self._pending = True
+        result = self._event.wait(timeout)
+        self._pending = False
+        if not result:
+            self._approved = False
+            return False
+        return self._approved
+
+    def resolve(self, approved: bool) -> None:
+        self._approved = approved
+        self._event.set()
+
+
 @dataclass
 class AgentRun:
     run_id: str
@@ -65,6 +90,7 @@ class AgentRun:
     cancelled: bool = False
     start_time: float = field(default_factory=time.time)
     final_result: AgentResult | None = None
+    approval_gate: _ApprovalGate = field(default_factory=_ApprovalGate)
 
     def emit(self, event_type: str, data: dict) -> None:
         self.events.append(TraceEvent(type=event_type, data=data))
@@ -73,8 +99,8 @@ class AgentRun:
         return round(time.time() - self.start_time, 1)
 
 
-def _build_agent(use_llm: bool, session_memory: SessionMemory | None = None) -> DevAgent:
-    tools = {
+def _base_tools() -> dict:
+    return {
         "read_file": read_file,
         "write_file": write_file,
         "list_files": list_files,
@@ -90,6 +116,10 @@ def _build_agent(use_llm: bool, session_memory: SessionMemory | None = None) -> 
         "git_init": git_init,
         "git_add_commit": git_add_commit,
     }
+
+
+def _build_agent(use_llm: bool, session_memory: SessionMemory | None = None) -> DevAgent:
+    tools = _base_tools()
     if use_llm:
         config = load_config(str(PROJECT_ROOT / "config" / "default.yaml"))
         client = build_client(config["llm"])
@@ -132,9 +162,62 @@ def _save_conversation(conversation_id: str) -> None:
         memory.save_to_disk(conversation_id, _CONVERSATIONS_DIR)
 
 
-def _run_agent_in_thread(run: AgentRun, use_llm: bool = True, conversation_id: str | None = None) -> None:
+def _run_agent_in_thread(run: AgentRun, use_llm: bool = True, conversation_id: str | None = None, use_plan: bool = False) -> None:
     try:
         session_memory = _get_conversation(conversation_id) if conversation_id else None
+        run.emit("agent_start", {"task": run.task, "use_llm": use_llm, "use_plan": use_plan, "conversation_id": conversation_id})
+
+        if use_plan:
+            from src.agent.task_planner import run_plan
+            config = load_config(str(PROJECT_ROOT / "config" / "default.yaml"))
+            client = build_client(config["llm"])
+            delegate_fn = create_delegate_task_tool(client=client, tools=_base_tools(), long_term_memory=_LONG_TERM_MEMORY)
+            all_tools = {**_base_tools(), "delegate_task": delegate_fn}
+
+            def on_plan(plan):
+                run.emit("plan_update", plan.to_dict())
+
+            def on_step_event(event, idx, info):
+                if event == "plan_step_start":
+                    run.emit("plan_step_start", {"index": idx, "description": info})
+                elif event == "plan_step_done":
+                    run.emit("plan_step_done", {"index": idx, "result": info})
+                elif event == "plan_step_failed":
+                    run.emit("plan_step_failed", {"index": idx, "error": info})
+                elif event == "plan_revised":
+                    run.emit("plan_revised", {"total_steps": info})
+
+            plan, success = run_plan(
+                run.task, all_tools, client,
+                long_term_memory=_LONG_TERM_MEMORY,
+                on_plan=on_plan,
+                on_step_event=on_step_event,
+                cancel_check=lambda: run.cancelled,
+            )
+
+            result_text = plan.to_dict()["steps"][-1]["result"] if plan.steps else ""
+            run.emit("agent_done", {
+                "success": success and not run.cancelled,
+                "steps": plan.total_steps,
+                "task": run.task,
+                "result": result_text,
+                "cancelled": run.cancelled,
+            })
+            save_run(run_id=run.run_id, task=run.task, use_llm=True,
+                     success=success and not run.cancelled,
+                     steps=plan.total_steps, elapsed=run.elapsed(),
+                     cancelled=run.cancelled, conversation_id=conversation_id)
+            _LONG_TERM_MEMORY.save(run.run_id, {
+                "timestamp": time.time(), "task": run.task,
+                "success": success and not run.cancelled,
+                "steps": plan.total_steps, "result": result_text,
+                "conversation_id": conversation_id,
+            })
+            if conversation_id:
+                _save_conversation(conversation_id)
+            run.done = True
+            return
+
         agent = _build_agent(use_llm, session_memory=session_memory)
         run.emit("agent_start", {"task": run.task, "tools": agent.available_tools(), "use_llm": use_llm, "conversation_id": conversation_id})
 
@@ -167,8 +250,23 @@ def _run_agent_in_thread(run: AgentRun, use_llm: bool = True, conversation_id: s
                     "error": result.error,
                 })
                 time.sleep(0.3)
+            elif event == "tool_retry":
+                tool_name, attempt, max_attempts, error = args
+                run.emit("tool_retry", {
+                    "step": step,
+                    "tool_name": tool_name,
+                    "attempt": attempt,
+                    "max_attempts": max_attempts,
+                    "error": error,
+                })
             elif event == "error":
                 run.emit("step_error", {"step": step, "error": args[0]})
+
+        def confirmation_check(tool_name, tool_args):
+            run.emit("approval_requested", {"tool_name": tool_name, "tool_args": tool_args})
+            approved = run.approval_gate.wait(timeout=120)
+            run.emit("approval_resolved", {"approved": approved, "tool_name": tool_name})
+            return approved
 
         result = agent.run(
             run.task,
@@ -177,6 +275,7 @@ def _run_agent_in_thread(run: AgentRun, use_llm: bool = True, conversation_id: s
             on_compression=lambda msgs, slen: run.emit("context_compressed", {
                 "messages": msgs, "summary_length": slen,
             }),
+            confirmation_check=confirmation_check,
         )
 
         run.emit("agent_done", {
@@ -271,6 +370,7 @@ async def start_run(request: Request):
         return {"error": "task is required"}
 
     use_llm = form.get("use_llm", "on") == "on"
+    use_plan = form.get("use_plan", "off") == "on"
     conversation_id = form.get("conversation_id", "").strip() or None
     if not conversation_id:
         conversation_id = uuid.uuid4().hex[:8]
@@ -280,7 +380,7 @@ async def start_run(request: Request):
 
     threading.Thread(
         target=_run_agent_in_thread,
-        args=(run, use_llm, conversation_id),
+        args=(run, use_llm, conversation_id, use_plan),
         daemon=True,
     ).start()
     return {"run_id": run_id, "conversation_id": conversation_id}
@@ -317,9 +417,6 @@ async def stream_run(run_id: str):
     )
 
 
-import asyncio
-
-
 @app.get("/api/runs/{run_id}")
 async def get_run(run_id: str):
     run = _ACTIVE_RUNS.get(run_id)
@@ -347,6 +444,28 @@ async def cancel_run(run_id: str):
     run.done = True
     run.emit("cancelled", {})
     return {"status": "cancelled"}
+
+
+@app.post("/api/runs/{run_id}/approve")
+async def approve_run(run_id: str):
+    run = _ACTIVE_RUNS.get(run_id)
+    if not run:
+        return {"error": "run not found"}
+    if not run.approval_gate.pending:
+        return {"error": "no pending approval"}
+    run.approval_gate.resolve(True)
+    return {"status": "approved"}
+
+
+@app.post("/api/runs/{run_id}/reject")
+async def reject_run(run_id: str):
+    run = _ACTIVE_RUNS.get(run_id)
+    if not run:
+        return {"error": "run not found"}
+    if not run.approval_gate.pending:
+        return {"error": "no pending approval"}
+    run.approval_gate.resolve(False)
+    return {"status": "rejected"}
 
 
 @app.get("/api/history")

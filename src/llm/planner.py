@@ -10,8 +10,15 @@ from src.agent.core import DevAgent, Decision
 from src.tools.metadata import get_tool_metadata, ParameterSchema
 
 
+def _infer_param_type(default) -> str:
+    if isinstance(default, bool):
+        return "boolean"
+    if isinstance(default, int):
+        return "integer"
+    return "string"
+
+
 def build_tools_list(tools: dict) -> list[dict]:
-    """Builds the tools array for the OpenAI-compatible tool_use API."""
     tool_defs = []
     for name, fn in tools.items():
         meta = get_tool_metadata(fn) if fn else None
@@ -23,7 +30,8 @@ def build_tools_list(tools: dict) -> list[dict]:
         sig = inspect.signature(fn)
         for pname, param in sig.parameters.items():
             is_required = param.default is inspect.Parameter.empty
-            properties[pname] = {"type": "string"}
+            ptype = _infer_param_type(param.default)
+            properties[pname] = {"type": ptype}
             if is_required:
                 required.append(pname)
 
@@ -42,14 +50,23 @@ def build_tools_list(tools: dict) -> list[dict]:
     return tool_defs
 
 
+def _type_label(default) -> str:
+    if isinstance(default, bool):
+        return "bool"
+    if isinstance(default, int):
+        return "int"
+    return "str"
+
+
 def _tool_signature(fn) -> str:
     sig = inspect.signature(fn)
     parts = []
     for pname, param in sig.parameters.items():
+        tl = _type_label(param.default)
         if param.default is inspect.Parameter.empty:
-            parts.append(f"{pname}: str")
+            parts.append(f"{pname}: {tl}")
         else:
-            parts.append(f"{pname}: str = {param.default!r}")
+            parts.append(f"{pname}: {tl} = {param.default!r}")
     return "(" + ", ".join(parts) + ")"
 
 
@@ -57,9 +74,10 @@ def _tool_params(fn) -> str:
     sig = inspect.signature(fn)
     lines = []
     for pname, param in sig.parameters.items():
+        tl = _type_label(param.default)
         req = "required" if param.default is inspect.Parameter.empty else "optional"
         default = f" = {param.default!r}" if param.default is not inspect.Parameter.empty else ""
-        lines.append(f"  - {pname} (str, {req}){default}")
+        lines.append(f"  - {pname} ({tl}, {req}){default}")
     return "\n".join(lines) if lines else "  (none)"
 
 
@@ -85,50 +103,32 @@ Given a task and the available tools, decide what to do next.
 Available tools:
 {build_tools_section(tools)}
 
-RESPONSE FORMAT (strict):
-You MUST respond with a single valid JSON object. No markdown, no prose, no explanation — JSON only.
+## How to respond
 
-Schema:
+You have two ways to respond:
+
+### 1. Call a tool (preferred)
+Use the native tool_call mechanism to invoke a tool directly. Fill in the exact
+parameter names from the tool's signature. Do NOT produce JSON for tool calls.
+
+### 2. Give a final answer (JSON only)
+When no more tools are needed, respond with a single valid JSON object:
+
   {{
     "thought": "one sentence of reasoning",
-    "action": "use_tool" | "answer",
-    "tool_name": "exact tool name or null",
-    "tool_args": {{}},
-    "answer": ""
-  }}
-
-RULES:
-1. Always output valid JSON. Invalid JSON causes an error.
-2. When action is "use_tool", you MUST fill "tool_args" with the exact parameter names
-   from the tool's function signature. E.g. read_file(path) requires tool_args: {{"path": "output.txt"}}.
-3. When action is "use_tool", leave "answer" as an empty string.
-4. When action is "answer", leave "tool_name" as null and "tool_args" as empty object.
-5. If a tool result message appears in your conversation history, the tool has already been
-   called. Do NOT call the same tool again — process the result and either answer or use a
-   different tool.
-
-You also support native tool calls. When using a tool, you may call it directly
-via the tool interface instead of producing JSON.
-
-EXAMPLE 1 — JSON response calling a tool:
-  {{
-    "thought": "The task requires reading a file, use read_file",
-    "action": "use_tool",
-    "tool_name": "read_file",
-    "tool_args": {{"path": "output.txt"}},
-    "answer": ""
-  }}
-
-EXAMPLE 2 — JSON response giving a final answer:
-  {{
-    "thought": "The file content is known, respond to the user",
     "action": "answer",
     "tool_name": null,
     "tool_args": {{}},
-    "answer": "The file contains 'created by agent'."
+    "answer": "your final answer to the user"
   }}
 
-Do not deviate from this format. Output JSON only.
+## Rules
+1. For tool calls, use native tool_call — do NOT output JSON for tool invocations.
+2. For final answers, output valid JSON with action="answer".
+3. If a tool result appears in your conversation history, the tool has already been
+   called. Do NOT call the same tool again — process the result and either answer
+   or use a different tool.
+4. Be concise in thoughts and answers.
 """
 
 
@@ -212,9 +212,12 @@ class LLMPlanner:
 
         if session_memory:
             for entry in session_memory.get_messages():
+                meta = entry.get("metadata", {})
                 messages.append(AgentMessage(
                     role=entry["role"],
                     content=entry["content"],
+                    tool_call_id=meta.get("tool_call_id"),
+                    tool_name=meta.get("tool_name"),
                 ))
 
         user_content = f"Task: {task}\nCurrent step: {step}"
@@ -240,6 +243,7 @@ class LLMPlanner:
                 tool_name=tc.function_name,
                 tool_args=tc.function_args,
                 answer="",
+                tool_call_id=tc.id,
             )
             decision.thought = f"Step {step}: {decision.thought}"
             return decision
@@ -274,6 +278,7 @@ class LLMDevAgent(DevAgent):
         max_steps: int = 20,
         session_memory: "SessionMemory" | None = None,
         long_term_memory=None,
+        max_tool_retries: int = 2,
     ):
         from src.memory.session import SessionMemory
         if session_memory is None:
@@ -282,6 +287,7 @@ class LLMDevAgent(DevAgent):
             tools=tools,
             max_steps=max_steps,
             session_memory=session_memory,
+            max_tool_retries=max_tool_retries,
         )
         self._client = client
         self._planner = LLMPlanner(client, long_term_memory=long_term_memory)

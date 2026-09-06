@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -28,6 +29,31 @@ class Decision:
     tool_name: str | None = None
     tool_args: dict = field(default_factory=dict)
     answer: str = ""
+    tool_call_id: str | None = None
+
+
+_RETRYABLE_PATTERNS = (
+    "not found", "no such file", "permission denied", "connection refused",
+    "timeout", "timed out", "temporarily unavailable", "broken pipe",
+    "connection reset", "network error", "rate limit", "too many requests",
+)
+
+_DANGEROUS_TOOLS = {"rm_file", "execute_command"}
+
+
+def _is_retryable(error: str) -> bool:
+    if not error:
+        return False
+    err_lower = error.lower()
+    return any(p in err_lower for p in _RETRYABLE_PATTERNS)
+
+
+def _is_dangerous(tool_name: str) -> bool:
+    return tool_name in _DANGEROUS_TOOLS
+
+
+def _args_key(tool_name: str, tool_args: dict) -> str:
+    return f"{tool_name}:{json.dumps(tool_args, sort_keys=True)}"
 
 
 class DevAgent:
@@ -36,9 +62,12 @@ class DevAgent:
         tools: dict[str, ToolFn] | None = None,
         max_steps: int = 20,
         session_memory: SessionMemory | None = None,
+        max_tool_retries: int = 2,
     ):
         self._tools: dict[str, ToolFn] = tools or {}
         self._max_steps = max_steps
+        self._max_tool_retries = max_tool_retries
+        self._retry_counts: dict[str, int] = {}
         self._state = AgentState(max_steps=max_steps)
         self._session_memory = session_memory
 
@@ -63,7 +92,7 @@ class DevAgent:
             answer="No planning strategy available.",
         )
 
-    def run(self, task: str, on_step=None, cancel_check=None, on_compression=None) -> AgentResult:
+    def run(self, task: str, on_step=None, cancel_check=None, on_compression=None, confirmation_check=None) -> AgentResult:
         self._state = AgentState(max_steps=self._max_steps)
         self._state.thought = f"Starting task: {task}"
 
@@ -97,20 +126,43 @@ class DevAgent:
                     on_step("error", step, f"unknown tool: {decision.tool_name}")
                 break
 
-            try:
-                tool_result = self._tools[decision.tool_name](**decision.tool_args)
-            except TypeError as e:
-                tool_result = ToolResult(
-                    success=False,
-                    output="",
-                    error=f"invalid arguments: {e}",
-                )
-            except Exception as e:
-                tool_result = ToolResult(
-                    success=False,
-                    output="",
-                    error=str(e),
-                )
+            if _is_dangerous(decision.tool_name) and confirmation_check:
+                approved = confirmation_check(decision.tool_name, decision.tool_args)
+                if not approved:
+                    tool_result = ToolResult(
+                        success=False,
+                        output="",
+                        error=f"action rejected by user: {decision.tool_name}",
+                    )
+                    self._state.result = tool_result.output
+                    if on_step:
+                        on_step("tool_result", step, decision.tool_name, tool_result)
+                    if self._session_memory:
+                        meta = {"tool_name": decision.tool_name}
+                        if decision.tool_call_id:
+                            meta["tool_call_id"] = decision.tool_call_id
+                        self._session_memory.add("assistant", decision.thought, metadata=meta)
+                        self._session_memory.add("tool", f"rejected: user denied {decision.tool_name}", metadata=meta)
+                    continue
+
+            args_key = _args_key(decision.tool_name, decision.tool_args)
+            max_attempts = self._max_tool_retries + 1
+            tool_result = None
+            for attempt in range(1, max_attempts + 1):
+                try:
+                    tool_result = self._tools[decision.tool_name](**decision.tool_args)
+                except TypeError as e:
+                    tool_result = ToolResult(success=False, output="", error=f"invalid arguments: {e}")
+                except Exception as e:
+                    tool_result = ToolResult(success=False, output="", error=str(e))
+
+                if tool_result.success or not _is_retryable(tool_result.error or ""):
+                    break
+                if attempt < max_attempts:
+                    if on_step:
+                        on_step("tool_retry", step, decision.tool_name, attempt, max_attempts, tool_result.error)
+                    self._retry_counts[args_key] = attempt
+
             self._state.result = tool_result.output
             if not tool_result.success and tool_result.error:
                 self._state.result += f"\nERROR: {tool_result.error}"
@@ -119,16 +171,15 @@ class DevAgent:
                 on_step("tool_result", step, decision.tool_name, tool_result)
 
             if self._session_memory:
-                self._session_memory.add(
-                    "assistant",
-                    decision.thought,
-                    metadata={"tool_name": decision.tool_name},
-                )
+                meta = {"tool_name": decision.tool_name}
+                if decision.tool_call_id:
+                    meta["tool_call_id"] = decision.tool_call_id
+                self._session_memory.add("assistant", decision.thought, metadata=meta)
                 status = "success" if tool_result.success else f"error: {tool_result.error}"
                 self._session_memory.add(
                     "tool",
                     f"{status}: {tool_result.output}",
-                    metadata={"tool_name": decision.tool_name},
+                    metadata=meta,
                 )
 
         return AgentResult(
@@ -190,8 +241,9 @@ class RuleBasedDevAgent(DevAgent):
         tools: dict[str, ToolFn] | None = None,
         max_steps: int = 20,
         session_memory: SessionMemory | None = None,
+        max_tool_retries: int = 2,
     ):
-        super().__init__(tools=tools, max_steps=max_steps, session_memory=session_memory)
+        super().__init__(tools=tools, max_steps=max_steps, session_memory=session_memory, max_tool_retries=max_tool_retries)
         self._planner = RuleBasedPlanner(rules or [])
 
     @property

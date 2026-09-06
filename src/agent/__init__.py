@@ -1,4 +1,5 @@
 from .core import AgentState, AgentResult, Decision, DevAgent, RuleBasedDevAgent
+from .task_planner import TaskPlan, PlanStep, TaskPlanner, run_plan
 
 __all__ = [
     "AgentState",
@@ -6,4 +7,8 @@ __all__ = [
     "Decision",
     "DevAgent",
     "RuleBasedDevAgent",
+    "TaskPlan",
+    "PlanStep",
+    "TaskPlanner",
+    "run_plan",
 ]
