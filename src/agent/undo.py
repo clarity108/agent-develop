@@ -31,29 +31,29 @@ class UndoManager:
     def __init__(self, snapshot_dir: Path | None = None):
         self._undo_stack: deque[FileSnapshot] = deque()
         self._redo_stack: deque[FileSnapshot] = deque()
-        self._before_map: dict[str, tuple[bool, Optional[bytes]]] = {}
-        self._snapshot_dir = snapshot_dir or _SNAPSHOT_DIR
+        self._before_map: dict[str, tuple[bool, bool, Optional[bytes]]] = {}
+        self._snapshot_dir = Path(snapshot_dir) if snapshot_dir else _SNAPSHOT_DIR
         self._snapshot_dir.mkdir(parents=True, exist_ok=True)
 
     def before_change(self, path: str) -> None:
         p = Path(path)
         if not p.exists():
-            self._before_map[path] = (False, None)
+            self._before_map[path] = (False, False, None)
         elif p.is_dir():
-            self._before_map[path] = (True, None)
+            self._before_map[path] = (True, True, None)
         else:
             try:
-                self._before_map[path] = (True, p.read_bytes())
+                self._before_map[path] = (True, False, p.read_bytes())
             except Exception:
-                self._before_map[path] = (False, None)
+                self._before_map[path] = (False, False, None)
 
     def after_change(self, path: str) -> bool:
         if path not in self._before_map:
             return False
-        exists_before, before = self._before_map.pop(path)
+        exists_before, was_dir, before = self._before_map.pop(path)
         p = Path(path)
 
-        if p.is_dir():
+        if was_dir:
             self._undo_stack.append(FileSnapshot(
                 path=str(p), before=None, after=None,
                 exists_before=True, is_dir=True,

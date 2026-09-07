@@ -29,7 +29,7 @@ class TestDevAgent:
 
     def test_cancel_check_stops_execution(self):
         checks = [0]
-        def slow_plan(task, step):
+        def slow_plan(task, step, **kwargs):
             if step <= 10:
                 return Decision(thought=f"step {step}", action="use_tool",
                                 tool_name="write_file",
