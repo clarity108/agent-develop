@@ -372,9 +372,9 @@ def _run_agent_in_thread(run: AgentRun, use_llm: bool = True, conversation_id: s
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     tools_list = []
-    _base_tools = _base_tools()
-    for name in list(_base_tools.keys()):
-        fn = _base_tools[name]
+    base_tools = _base_tools()
+    for name in list(base_tools.keys()):
+        fn = base_tools[name]
         meta = get_tool_metadata(fn)
         tools_list.append({
             "name": meta.name if meta else name,
