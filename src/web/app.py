@@ -17,6 +17,7 @@ from fastapi.templating import Jinja2Templates
 
 from src.agent.core import RuleBasedDevAgent, DevAgent, AgentResult
 from src.agent.delegation import create_delegate_task_tool
+from src.agent.undo import UndoManager
 from src.llm.config import load_config, build_client
 from src.llm.planner import LLMDevAgent
 from src.tools import (
@@ -25,6 +26,8 @@ from src.tools import (
     mkdir, mv_file, cp_file, rm_file,
     execute_command, execute_sandbox, execute_python, list_env,
     diff_file, apply_patch, preview_diff,
+    batch_replace, batch_rename, batch_move, batch_delete, find_in_files, batch_format,
+    create_code_review_tool, create_diff_review_tool, create_git_diff_review_tool,
     create_generate_tests_tool, create_generate_tests_inline_tool,
     git_status, git_init, git_add_commit,
     get_tool_metadata, tool,
@@ -51,6 +54,7 @@ _ACTIVE_RUNS: dict[str, "AgentRun"] = {}
 _CONVERSATIONS: dict[str, SessionMemory] = {}
 _CONVERSATIONS_DIR = str(PROJECT_ROOT / "conversations")
 _LONG_TERM_MEMORY = LongTermMemory(store_dir=str(PROJECT_ROOT / "memories"))
+_UNDO_MANAGER = UndoManager()
 
 
 @dataclass
@@ -121,6 +125,12 @@ def _base_tools() -> dict:
         "diff_file": diff_file,
         "apply_patch": apply_patch,
         "preview_diff": preview_diff,
+        "batch_replace": batch_replace,
+        "batch_rename": batch_rename,
+        "batch_move": batch_move,
+        "batch_delete": batch_delete,
+        "find_in_files": find_in_files,
+        "batch_format": batch_format,
         "git_status": git_status,
         "git_init": git_init,
         "git_add_commit": git_add_commit,
@@ -138,9 +148,13 @@ def _build_agent(use_llm: bool, session_memory: SessionMemory | None = None) -> 
         tools["delegate_task"] = delegate_fn
         tools["generate_tests"] = create_generate_tests_tool(client)
         tools["generate_tests_inline"] = create_generate_tests_inline_tool(client)
+        tools["code_review"] = create_code_review_tool(client)
+        tools["diff_review"] = create_diff_review_tool(client)
+        tools["git_diff_review"] = create_git_diff_review_tool(client)
         return LLMDevAgent(
             client=client, tools=tools, session_memory=session_memory,
             long_term_memory=_LONG_TERM_MEMORY,
+            undo_manager=_UNDO_MANAGER,
         )
     return RuleBasedDevAgent(
         rules=[
@@ -152,6 +166,7 @@ def _build_agent(use_llm: bool, session_memory: SessionMemory | None = None) -> 
         ],
         tools=tools,
         session_memory=session_memory,
+        undo_manager=_UNDO_MANAGER,
     )
 
 
@@ -282,6 +297,12 @@ def _run_agent_in_thread(run: AgentRun, use_llm: bool = True, conversation_id: s
         def on_token(token: str):
             run.emit("token", {"text": token})
 
+        def on_usage(prompt_tokens: int, completion_tokens: int):
+            run.emit("usage", {
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+            })
+
         result = agent.run(
             run.task,
             on_step=on_step,
@@ -291,6 +312,7 @@ def _run_agent_in_thread(run: AgentRun, use_llm: bool = True, conversation_id: s
             }),
             confirmation_check=confirmation_check,
             on_token=on_token,
+            on_usage=on_usage,
         )
 
         run.emit("agent_done", {
@@ -369,6 +391,18 @@ async def index(request: Request):
     tools_list.append({
         "name": "generate_tests_inline",
         "description": "Generates pytest test code from inline source code using LLM analysis",
+    })
+    tools_list.append({
+        "name": "code_review",
+        "description": "Reviews a Python source file and returns structured findings (bugs, security, performance, style)",
+    })
+    tools_list.append({
+        "name": "diff_review",
+        "description": "Reviews a unified diff and returns structured findings about the changes",
+    })
+    tools_list.append({
+        "name": "git_diff_review",
+        "description": "Reviews the current git diff (staged + unstaged) and returns structured findings",
     })
 
     _rules = _build_agent(False).rules
@@ -485,6 +519,21 @@ async def reject_run(run_id: str):
         return {"error": "no pending approval"}
     run.approval_gate.resolve(False)
     return {"status": "rejected"}
+
+
+@app.get("/api/undo/stack")
+async def get_undo_stack():
+    return _UNDO_MANAGER.stack_info()
+
+
+@app.post("/api/undo/undo")
+async def do_undo():
+    return _UNDO_MANAGER.undo()
+
+
+@app.post("/api/undo/redo")
+async def do_redo():
+    return _UNDO_MANAGER.redo()
 
 
 @app.get("/api/history")

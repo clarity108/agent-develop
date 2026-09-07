@@ -180,6 +180,7 @@ class LLMPlanner:
         context: str = "",
         on_compression=None,
         on_token=None,
+        on_usage=None,
     ) -> Decision:
         tools: dict = {}
         if isinstance(available_tools, dict):
@@ -230,7 +231,7 @@ class LLMPlanner:
 
         if on_token:
             return self._plan_stream(
-                messages, tool_defs, step, on_token,
+                messages, tool_defs, step, on_token, on_usage,
             )
 
         resp = self._client.chat(messages, tools=tool_defs)
@@ -241,6 +242,9 @@ class LLMPlanner:
                 action="answer",
                 answer=f"Sorry, I encountered an error: {resp.error}",
             )
+
+        if on_usage and resp.usage:
+            on_usage(resp.usage.prompt_tokens, resp.usage.completion_tokens)
 
         if resp.tool_calls:
             tc = resp.tool_calls[0]
@@ -259,7 +263,7 @@ class LLMPlanner:
         decision.thought = f"Step {step}: {decision.thought}"
         return decision
 
-    def _plan_stream(self, messages, tool_defs, step, on_token) -> Decision:
+    def _plan_stream(self, messages, tool_defs, step, on_token, on_usage=None) -> Decision:
         from .client import StreamChunk, ChatResponse
         full_content = ""
         tool_calls = []
@@ -329,6 +333,7 @@ class LLMDevAgent(DevAgent):
         session_memory: "SessionMemory" | None = None,
         long_term_memory=None,
         max_tool_retries: int = 2,
+        undo_manager=None,
     ):
         from src.memory.session import SessionMemory
         if session_memory is None:
@@ -338,11 +343,12 @@ class LLMDevAgent(DevAgent):
             max_steps=max_steps,
             session_memory=session_memory,
             max_tool_retries=max_tool_retries,
+            undo_manager=undo_manager,
         )
         self._client = client
         self._planner = LLMPlanner(client, long_term_memory=long_term_memory)
 
-    def _plan(self, task: str, step: int, on_compression=None, on_token=None) -> Decision:
+    def _plan(self, task: str, step: int, on_compression=None, on_token=None, on_usage=None) -> Decision:
         return self._planner.plan(
             task,
             step,
@@ -350,4 +356,5 @@ class LLMDevAgent(DevAgent):
             session_memory=self._session_memory,
             on_compression=on_compression,
             on_token=on_token,
+            on_usage=on_usage,
         )

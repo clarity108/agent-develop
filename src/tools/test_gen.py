@@ -29,7 +29,7 @@ Output ONLY the test code as a Python file. No markdown, no explanation.
 
 Start with:
 ```python
-"""Tests for {filename}."""
+\"\"\"Tests for {filename}.\"\"\"
 import pytest
 ```
 """

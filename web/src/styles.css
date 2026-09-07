@@ -789,6 +789,7 @@ html, body {
 .stat-value.accent { color: var(--accent); }
 .stat-value.error  { color: var(--error); }
 .stat-value.success { color: var(--success); }
+.stat-value.tokens { color: var(--accent-dim); font-variant-numeric: tabular-nums; }
 
 /* AGENT STATE */
 .agent-state {
@@ -860,6 +861,52 @@ html, body {
 .btn-cancel:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+/* UNDO / REDO BUTTONS */
+.btn-undo, .btn-redo {
+  background: transparent;
+  color: var(--accent-dim);
+  border: 1px solid var(--accent-dim);
+  padding: 3px var(--s2);
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  margin-left: var(--s2);
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.btn-undo:hover:not(:disabled), .btn-redo:hover:not(:disabled) {
+  background: var(--accent-dim);
+  color: var(--bg);
+}
+
+.btn-undo:disabled, .btn-redo:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* UNDO INDICATOR */
+.undo-indicator {
+  padding: var(--s1) var(--s3);
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--accent-dim);
+  border-left: 2px solid var(--accent-dim);
+  background: rgba(212, 160, 48, 0.04);
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.undo-indicator.redo {
+  color: var(--info);
+  border-left-color: var(--info);
+}
+
+.undo-icon {
+  font-size: 12px;
 }
 
 /* CLEAR HISTORY BUTTON */

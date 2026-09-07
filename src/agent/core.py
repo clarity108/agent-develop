@@ -40,6 +40,14 @@ _RETRYABLE_PATTERNS = (
 
 _DANGEROUS_TOOLS = {"rm_file", "execute_command"}
 
+_FILE_MOD_TOOLS = {
+    "write_file": "path",
+    "edit_file": "path",
+    "rm_file": "path",
+    "mv_file": "source",
+    "apply_patch": "path",
+}
+
 
 def _is_retryable(error: str) -> bool:
     if not error:
@@ -63,6 +71,7 @@ class DevAgent:
         max_steps: int = 20,
         session_memory: SessionMemory | None = None,
         max_tool_retries: int = 2,
+        undo_manager=None,
     ):
         self._tools: dict[str, ToolFn] = tools or {}
         self._max_steps = max_steps
@@ -70,6 +79,7 @@ class DevAgent:
         self._retry_counts: dict[str, int] = {}
         self._state = AgentState(max_steps=max_steps)
         self._session_memory = session_memory
+        self._undo_manager = undo_manager
 
     @property
     def state(self) -> AgentState:
@@ -79,20 +89,24 @@ class DevAgent:
     def session_memory(self) -> SessionMemory | None:
         return self._session_memory
 
+    @property
+    def undo_manager(self):
+        return self._undo_manager
+
     def register_tool(self, name: str, fn: ToolFn) -> None:
         self._tools[name] = fn
 
     def available_tools(self) -> list[str]:
         return sorted(self._tools.keys())
 
-    def _plan(self, task: str, step: int, on_compression=None, on_token=None) -> Decision:
+    def _plan(self, task: str, step: int, on_compression=None, on_token=None, on_usage=None) -> Decision:
         return Decision(
             thought="No planner configured",
             action="answer",
             answer="No planning strategy available.",
         )
 
-    def run(self, task: str, on_step=None, cancel_check=None, on_compression=None, confirmation_check=None, on_token=None) -> AgentResult:
+    def run(self, task: str, on_step=None, cancel_check=None, on_compression=None, confirmation_check=None, on_token=None, on_usage=None) -> AgentResult:
         self._state = AgentState(max_steps=self._max_steps)
         self._state.thought = f"Starting task: {task}"
 
@@ -105,7 +119,7 @@ class DevAgent:
                 self._state.done = True
                 break
             self._state.step = step
-            decision = self._plan(task, step, on_compression=on_compression, on_token=on_token)
+            decision = self._plan(task, step, on_compression=on_compression, on_token=on_token, on_usage=on_usage)
             self._state.thought = decision.thought
             self._state.action = decision.action
 
@@ -146,6 +160,14 @@ class DevAgent:
                     continue
 
             args_key = _args_key(decision.tool_name, decision.tool_args)
+
+            undo_path = None
+            if self._undo_manager and decision.tool_name in _FILE_MOD_TOOLS:
+                path_arg = _FILE_MOD_TOOLS[decision.tool_name]
+                if path_arg in decision.tool_args:
+                    undo_path = decision.tool_args[path_arg]
+                    self._undo_manager.before_change(undo_path)
+
             max_attempts = self._max_tool_retries + 1
             tool_result = None
             for attempt in range(1, max_attempts + 1):
@@ -162,6 +184,9 @@ class DevAgent:
                     if on_step:
                         on_step("tool_retry", step, decision.tool_name, attempt, max_attempts, tool_result.error)
                     self._retry_counts[args_key] = attempt
+
+            if undo_path and tool_result.success:
+                self._undo_manager.after_change(undo_path)
 
             self._state.result = tool_result.output
             if not tool_result.success and tool_result.error:
@@ -242,13 +267,14 @@ class RuleBasedDevAgent(DevAgent):
         max_steps: int = 20,
         session_memory: SessionMemory | None = None,
         max_tool_retries: int = 2,
+        undo_manager=None,
     ):
-        super().__init__(tools=tools, max_steps=max_steps, session_memory=session_memory, max_tool_retries=max_tool_retries)
+        super().__init__(tools=tools, max_steps=max_steps, session_memory=session_memory, max_tool_retries=max_tool_retries, undo_manager=undo_manager)
         self._planner = RuleBasedPlanner(rules or [])
 
     @property
     def rules(self) -> list[dict]:
         return self._planner.rules
 
-    def _plan(self, task: str, step: int, on_compression=None, on_token=None) -> Decision:
+    def _plan(self, task: str, step: int, on_compression=None, on_token=None, on_usage=None) -> Decision:
         return self._planner.plan(task, step)

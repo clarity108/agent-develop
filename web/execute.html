@@ -92,6 +92,12 @@
       <div class="trace-header-right">
         <span class="trace-step" id="trace-step">step 0</span>
         <span class="trace-time" id="trace-time">0.0s</span>
+        <button class="btn-undo" id="btn-undo" disabled title="undo last change">
+          <span>&#8617; undo</span>
+        </button>
+        <button class="btn-redo" id="btn-redo" disabled title="redo last undone change">
+          <span>&#8618; redo</span>
+        </button>
         <button class="btn-cancel" id="btn-cancel" style="display:none">
           <span>cancel</span>
         </button>
@@ -125,7 +131,7 @@
       </div>
       <div class="footer-right">
         <span class="footer-label">TOOLS</span>
-        <span class="footer-value" id="footer-tools-count">24</span>
+        <span class="footer-value" id="footer-tools-count">33</span>
       </div>
     </div>
   </main>
@@ -162,6 +168,10 @@
         <div class="stat-item">
           <span class="stat-label">ERRORS</span>
           <span class="stat-value" id="stat-errors">0</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">TOKENS</span>
+          <span class="stat-value" id="stat-tokens">0</span>
         </div>
         <div class="stat-item">
           <span class="stat-label">ELAPSED</span>

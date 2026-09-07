@@ -8,7 +8,7 @@
   var activeConversationId = null;
   var selectedSessionId = null;
   var sessions = [];
-  var stats = { steps: 0, toolCalls: 0, errors: 0 };
+  var stats = { steps: 0, toolCalls: 0, errors: 0, promptTokens: 0, completionTokens: 0 };
 
   var $ = function (sel) { return document.querySelector(sel); };
 
@@ -35,6 +35,9 @@
     $("#stat-errors").textContent = stats.errors;
     $("#stat-errors").className = "stat-value" + (stats.errors > 0 ? " error" : "");
     $("#stat-elapsed").textContent = (elapsed || 0).toFixed(1) + "s";
+    var totalTokens = stats.promptTokens + stats.completionTokens;
+    $("#stat-tokens").textContent = totalTokens > 0 ? totalTokens.toLocaleString() : "0";
+    $("#stat-tokens").className = "stat-value" + (totalTokens > 0 ? " tokens" : "");
     $("#trace-step").innerHTML = "step <strong>" + stats.steps + "</strong>";
     $("#trace-time").innerHTML = "<strong>" + (elapsed || 0).toFixed(1) + "s</strong>";
   }
@@ -372,6 +375,7 @@
         if (el2) appendToolResult(el2, msg.data);
         if (!msg.data.success) stats.errors++;
         updateStats();
+        refreshUndoStack();
         return;
       }
 
@@ -463,6 +467,13 @@
         return;
       }
 
+      if (msg.type === "usage") {
+        stats.promptTokens += msg.data.prompt_tokens;
+        stats.completionTokens += msg.data.completion_tokens;
+        updateStats();
+        return;
+      }
+
       if (msg.type === "agent_done") {
         var cancelled = msg.data.cancelled;
         setStatus(cancelled ? "cancelled" : (msg.data.success ? "done" : "failed"));
@@ -520,12 +531,52 @@
   }
 
   function resetStats() {
-    stats = { steps: 0, toolCalls: 0, errors: 0 };
+    stats = { steps: 0, toolCalls: 0, errors: 0, promptTokens: 0, completionTokens: 0 };
     updateStats(0);
     document.querySelectorAll(".tool-item").forEach(function (el) {
       el.classList.remove("active");
     });
     hideFinalAnswer();
+  }
+
+  function refreshUndoStack() {
+    fetch("/api/undo/stack")
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        var undoBtn = $("#btn-undo");
+        var redoBtn = $("#btn-redo");
+        if (undoBtn) undoBtn.disabled = data.undo === 0;
+        if (redoBtn) redoBtn.disabled = data.redo === 0;
+      })
+      .catch(function () {});
+  }
+
+  async function doUndo() {
+    var res = await fetch("/api/undo/undo", { method: "POST" });
+    var data = await res.json();
+    if (data.success) {
+      var trace = $("#trace");
+      var el = document.createElement("div");
+      el.className = "undo-indicator";
+      el.innerHTML = '<span class="undo-icon">&#8617;</span> <span>' + esc(data.message) + '</span>';
+      trace.appendChild(el);
+      trace.scrollTop = trace.scrollHeight;
+    }
+    refreshUndoStack();
+  }
+
+  async function doRedo() {
+    var res = await fetch("/api/undo/redo", { method: "POST" });
+    var data = await res.json();
+    if (data.success) {
+      var trace = $("#trace");
+      var el = document.createElement("div");
+      el.className = "undo-indicator redo";
+      el.innerHTML = '<span class="undo-icon">&#8618;</span> <span>' + esc(data.message) + '</span>';
+      trace.appendChild(el);
+      trace.scrollTop = trace.scrollHeight;
+    }
+    refreshUndoStack();
   }
 
   async function submitTask(task) {
@@ -899,6 +950,16 @@ document.addEventListener("DOMContentLoaded", function () {
       cancelBtn.addEventListener("click", function () {
         cancelRun();
       });
+    }
+
+    var undoBtn = $("#btn-undo");
+    if (undoBtn) {
+      undoBtn.addEventListener("click", function () { doUndo(); });
+    }
+
+    var redoBtn = $("#btn-redo");
+    if (redoBtn) {
+      redoBtn.addEventListener("click", function () { doRedo(); });
     }
 
     var clearHistoryBtn = $("#btn-clear-history");
