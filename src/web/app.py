@@ -29,8 +29,9 @@ from src.tools import (
     batch_replace, batch_rename, batch_move, batch_delete, find_in_files, batch_format,
     create_code_review_tool, create_diff_review_tool, create_git_diff_review_tool,
     create_generate_tests_tool, create_generate_tests_inline_tool,
-    git_status, git_init, git_add_commit,
+    git_status, git_init, git_add_commit, git_log, git_branch, git_diff, git_blame,
     analyze_code, run_tests, pip_install, pip_list,
+    http_get, http_post, http_request,
     get_tool_metadata, tool,
 )
 from src.tools.metadata import ToolMetadata
@@ -135,10 +136,17 @@ def _base_tools() -> dict:
         "git_status": git_status,
         "git_init": git_init,
         "git_add_commit": git_add_commit,
+        "git_log": git_log,
+        "git_branch": git_branch,
+        "git_diff": git_diff,
+        "git_blame": git_blame,
         "analyze_code": analyze_code,
         "run_tests": run_tests,
         "pip_install": pip_install,
         "pip_list": pip_list,
+        "http_get": http_get,
+        "http_post": http_post,
+        "http_request": http_request,
     }
 
 
