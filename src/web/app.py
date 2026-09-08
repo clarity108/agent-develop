@@ -30,6 +30,7 @@ from src.tools import (
     create_code_review_tool, create_diff_review_tool, create_git_diff_review_tool,
     create_generate_tests_tool, create_generate_tests_inline_tool,
     git_status, git_init, git_add_commit,
+    analyze_code, run_tests, pip_install, pip_list,
     get_tool_metadata, tool,
 )
 from src.tools.metadata import ToolMetadata
@@ -134,6 +135,10 @@ def _base_tools() -> dict:
         "git_status": git_status,
         "git_init": git_init,
         "git_add_commit": git_add_commit,
+        "analyze_code": analyze_code,
+        "run_tests": run_tests,
+        "pip_install": pip_install,
+        "pip_list": pip_list,
     }
 
 

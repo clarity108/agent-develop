@@ -6,6 +6,7 @@ from .batch_tools import batch_replace, batch_rename, batch_move, batch_delete, 
 from .code_review import create_code_review_tool, create_diff_review_tool, create_git_diff_review_tool
 from .test_gen import create_generate_tests_tool, create_generate_tests_inline_tool
 from .git_tool import git_status, git_init, git_add_commit
+from .dev_tools import analyze_code, run_tests, pip_install, pip_list
 from .metadata import ToolMetadata, ParameterSchema, tool, get_tool_metadata
 
 __all__ = [
@@ -18,5 +19,6 @@ __all__ = [
     "create_code_review_tool", "create_diff_review_tool", "create_git_diff_review_tool",
     "create_generate_tests_tool", "create_generate_tests_inline_tool",
     "git_status", "git_init", "git_add_commit",
+    "analyze_code", "run_tests", "pip_install", "pip_list",
     "ToolMetadata", "ParameterSchema", "tool", "get_tool_metadata",
 ]
