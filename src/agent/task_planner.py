@@ -228,6 +228,7 @@ def run_plan(
         else:
             step.status = "failed"
             step.result = result.error or "unknown error"
+            all_steps_done = False
             if on_step_event:
                 on_step_event("plan_step_failed", step.index, result.error)
 
@@ -238,10 +239,9 @@ def run_plan(
                 plan = revised
                 if on_plan:
                     on_plan(plan)
-                all_steps_done = False
 
         if on_plan:
             on_plan(plan)
 
-    success = all(s.status in ("done", "skipped") for s in plan.steps)
+    success = all_steps_done
     return plan, success
