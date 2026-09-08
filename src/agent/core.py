@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import Protocol
 
 from src.agent.cache import ToolCache
+from src.agent.recovery import RecoveryManager
 
 from src.tools.file_tools import ToolResult
 from src.memory.session import SessionMemory
@@ -35,9 +36,9 @@ class Decision:
 
 
 _RETRYABLE_PATTERNS = (
-    "not found", "no such file", "permission denied", "connection refused",
-    "timeout", "timed out", "temporarily unavailable", "broken pipe",
-    "connection reset", "network error", "rate limit", "too many requests",
+    "connection refused", "timeout", "timed out", "temporarily unavailable",
+    "broken pipe", "connection reset", "network error", "rate limit",
+    "too many requests", "connection reset", "service unavailable",
 )
 
 _DANGEROUS_TOOLS = {"rm_file", "execute_command"}
@@ -75,6 +76,7 @@ class DevAgent:
         max_tool_retries: int = 2,
         undo_manager=None,
         tool_cache: ToolCache | None = None,
+        recovery_manager: RecoveryManager | None = None,
     ):
         self._tools: dict[str, ToolFn] = tools or {}
         self._max_steps = max_steps
@@ -84,6 +86,7 @@ class DevAgent:
         self._session_memory = session_memory
         self._undo_manager = undo_manager
         self._tool_cache = tool_cache or ToolCache()
+        self._recovery_manager = recovery_manager or RecoveryManager()
 
     @property
     def state(self) -> AgentState:
@@ -100,6 +103,10 @@ class DevAgent:
     @property
     def tool_cache(self) -> ToolCache:
         return self._tool_cache
+
+    @property
+    def recovery_manager(self) -> RecoveryManager:
+        return self._recovery_manager
 
     def register_tool(self, name: str, fn: ToolFn) -> None:
         self._tools[name] = fn
@@ -214,6 +221,26 @@ class DevAgent:
                         on_step("tool_retry", step, decision.tool_name, attempt, max_attempts, tool_result.error)
                     self._retry_counts[args_key] = attempt
 
+            if not tool_result.success and self._recovery_manager:
+                recovery = self._recovery_manager.try_recover(
+                    decision.tool_name, decision.tool_args, tool_result.error or ""
+                )
+                if recovery:
+                    if recovery.modified_args:
+                        try:
+                            recovered_result = self._tools[decision.tool_name](**recovery.modified_args)
+                        except Exception as e:
+                            recovered_result = ToolResult(success=False, output="", error=str(e))
+                        if recovered_result.success:
+                            tool_result = recovered_result
+                            decision.tool_args = recovery.modified_args
+                            cache_key = ToolCache.make_key(decision.tool_name, decision.tool_args)
+                            args_key = _args_key(decision.tool_name, decision.tool_args)
+                            if on_step:
+                                on_step("tool_recovery", step, decision.tool_name, "retried with modified args", recovery.modified_args)
+                    if recovery.suggestion and not tool_result.success:
+                        tool_result.error = (tool_result.error or "") + f"\nSUGGESTION: {recovery.suggestion}"
+
             if tool_result.success:
                 self._tool_cache.set(cache_key, tool_result)
                 if mod_path:
@@ -303,8 +330,9 @@ class RuleBasedDevAgent(DevAgent):
         max_tool_retries: int = 2,
         undo_manager=None,
         tool_cache: ToolCache | None = None,
+        recovery_manager: RecoveryManager | None = None,
     ):
-        super().__init__(tools=tools, max_steps=max_steps, session_memory=session_memory, max_tool_retries=max_tool_retries, undo_manager=undo_manager, tool_cache=tool_cache)
+        super().__init__(tools=tools, max_steps=max_steps, session_memory=session_memory, max_tool_retries=max_tool_retries, undo_manager=undo_manager, tool_cache=tool_cache, recovery_manager=recovery_manager)
         self._planner = RuleBasedPlanner(rules or [])
 
     @property

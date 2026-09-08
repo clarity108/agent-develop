@@ -335,6 +335,7 @@ class LLMDevAgent(DevAgent):
         max_tool_retries: int = 2,
         undo_manager=None,
         tool_cache=None,
+        recovery_manager=None,
     ):
         from src.memory.session import SessionMemory
         if session_memory is None:
@@ -346,6 +347,7 @@ class LLMDevAgent(DevAgent):
             max_tool_retries=max_tool_retries,
             undo_manager=undo_manager,
             tool_cache=tool_cache,
+            recovery_manager=recovery_manager,
         )
         self._client = client
         self._planner = LLMPlanner(client, long_term_memory=long_term_memory)
