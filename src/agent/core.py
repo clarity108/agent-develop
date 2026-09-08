@@ -4,6 +4,8 @@ import json
 from dataclasses import dataclass, field
 from typing import Protocol
 
+from src.agent.cache import ToolCache
+
 from src.tools.file_tools import ToolResult
 from src.memory.session import SessionMemory
 
@@ -72,6 +74,7 @@ class DevAgent:
         session_memory: SessionMemory | None = None,
         max_tool_retries: int = 2,
         undo_manager=None,
+        tool_cache: ToolCache | None = None,
     ):
         self._tools: dict[str, ToolFn] = tools or {}
         self._max_steps = max_steps
@@ -80,6 +83,7 @@ class DevAgent:
         self._state = AgentState(max_steps=max_steps)
         self._session_memory = session_memory
         self._undo_manager = undo_manager
+        self._tool_cache = tool_cache or ToolCache()
 
     @property
     def state(self) -> AgentState:
@@ -92,6 +96,10 @@ class DevAgent:
     @property
     def undo_manager(self):
         return self._undo_manager
+
+    @property
+    def tool_cache(self) -> ToolCache:
+        return self._tool_cache
 
     def register_tool(self, name: str, fn: ToolFn) -> None:
         self._tools[name] = fn
@@ -160,13 +168,34 @@ class DevAgent:
                     continue
 
             args_key = _args_key(decision.tool_name, decision.tool_args)
+            cache_key = ToolCache.make_key(decision.tool_name, decision.tool_args)
+
+            cached = self._tool_cache.get(cache_key)
+            if cached is not None:
+                tool_result = cached
+                if on_step:
+                    on_step("tool_cache_hit", step, decision.tool_name, tool_result)
+                self._state.result = tool_result.output
+                if not tool_result.success and tool_result.error:
+                    self._state.result += f"\nERROR: {tool_result.error}"
+                if self._session_memory:
+                    meta = {"tool_name": decision.tool_name, "cache": "hit"}
+                    if decision.tool_call_id:
+                        meta["tool_call_id"] = decision.tool_call_id
+                    self._session_memory.add("assistant", decision.thought, metadata=meta)
+                    status = "success" if tool_result.success else f"error: {tool_result.error}"
+                    self._session_memory.add("tool", f"{status} [cached]: {tool_result.output}", metadata=meta)
+                continue
 
             undo_path = None
-            if self._undo_manager and decision.tool_name in _FILE_MOD_TOOLS:
+            mod_path = None
+            if decision.tool_name in _FILE_MOD_TOOLS:
                 path_arg = _FILE_MOD_TOOLS[decision.tool_name]
                 if path_arg in decision.tool_args:
-                    undo_path = decision.tool_args[path_arg]
-                    self._undo_manager.before_change(undo_path)
+                    mod_path = decision.tool_args[path_arg]
+                    if self._undo_manager:
+                        undo_path = mod_path
+                        self._undo_manager.before_change(undo_path)
 
             max_attempts = self._max_tool_retries + 1
             tool_result = None
@@ -184,6 +213,11 @@ class DevAgent:
                     if on_step:
                         on_step("tool_retry", step, decision.tool_name, attempt, max_attempts, tool_result.error)
                     self._retry_counts[args_key] = attempt
+
+            if tool_result.success:
+                self._tool_cache.set(cache_key, tool_result)
+                if mod_path:
+                    self._tool_cache.invalidate_path(str(mod_path))
 
             if undo_path and tool_result.success:
                 self._undo_manager.after_change(undo_path)
@@ -268,8 +302,9 @@ class RuleBasedDevAgent(DevAgent):
         session_memory: SessionMemory | None = None,
         max_tool_retries: int = 2,
         undo_manager=None,
+        tool_cache: ToolCache | None = None,
     ):
-        super().__init__(tools=tools, max_steps=max_steps, session_memory=session_memory, max_tool_retries=max_tool_retries, undo_manager=undo_manager)
+        super().__init__(tools=tools, max_steps=max_steps, session_memory=session_memory, max_tool_retries=max_tool_retries, undo_manager=undo_manager, tool_cache=tool_cache)
         self._planner = RuleBasedPlanner(rules or [])
 
     @property
