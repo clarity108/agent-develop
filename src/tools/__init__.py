@@ -8,6 +8,7 @@ from .test_gen import create_generate_tests_tool, create_generate_tests_inline_t
 from .git_tool import git_status, git_init, git_add_commit, git_log, git_branch, git_diff, git_blame
 from .dev_tools import analyze_code, run_tests, pip_install, pip_list
 from .http_tools import http_get, http_post, http_request
+from .sqlite_tools import sqlite_query, sqlite_schema
 from .metadata import ToolMetadata, ParameterSchema, tool, get_tool_metadata
 
 __all__ = [
@@ -22,5 +23,6 @@ __all__ = [
     "git_status", "git_init", "git_add_commit", "git_log", "git_branch", "git_diff", "git_blame",
     "analyze_code", "run_tests", "pip_install", "pip_list",
     "http_get", "http_post", "http_request",
+    "sqlite_query", "sqlite_schema",
     "ToolMetadata", "ParameterSchema", "tool", "get_tool_metadata",
 ]

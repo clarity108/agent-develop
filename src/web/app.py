@@ -32,6 +32,7 @@ from src.tools import (
     git_status, git_init, git_add_commit, git_log, git_branch, git_diff, git_blame,
     analyze_code, run_tests, pip_install, pip_list,
     http_get, http_post, http_request,
+    sqlite_query, sqlite_schema,
     get_tool_metadata, tool,
 )
 from src.tools.metadata import ToolMetadata
@@ -147,6 +148,8 @@ def _base_tools() -> dict:
         "http_get": http_get,
         "http_post": http_post,
         "http_request": http_request,
+        "sqlite_query": sqlite_query,
+        "sqlite_schema": sqlite_schema,
     }
 
 
