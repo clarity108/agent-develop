@@ -118,8 +118,25 @@ class DashScopeLLMClient:
                 return ChatResponse(content="", error=error_msg)
 
             data = resp.json()
-            choice = data["choices"][0]
-            msg = choice["message"]
+            if isinstance(data, list):
+                data = data[0] if data else {}
+            choices = data.get("choices", [])
+            if not choices:
+                content = data.get("output", {}).get("content", "") if isinstance(data, dict) else ""
+                if content:
+                    return ChatResponse(content=content, role="assistant")
+                error_text = data.get("error", {}).get("message", "") if isinstance(data, dict) else ""
+                if not error_text:
+                    error_text = data.get("message", "") if isinstance(data, dict) else ""
+                if not error_text:
+                    error_text = f"empty response from API (status {resp.status_code})"
+                return ChatResponse(content="", error=error_text)
+            choice = choices[0]
+            msg = choice.get("message", choice.get("output", {}))
+            if isinstance(msg, str):
+                return ChatResponse(content=msg, role="assistant")
+            if not isinstance(msg, dict):
+                msg = {}
 
             tool_calls = []
             for tc in msg.get("tool_calls", []):
@@ -183,7 +200,16 @@ class DashScopeLLMClient:
                         except json.JSONDecodeError:
                             continue
 
-                        choice = data.get("choices", [{}])[0]
+                        choices = data.get("choices", [])
+                        if not choices:
+                            out = data.get("output", {})
+                            content = out.get("content", "") if isinstance(out, dict) else ""
+                            if content:
+                                yield StreamChunk(content=content, done=True)
+                            else:
+                                yield StreamChunk(done=True)
+                            return
+                        choice = choices[0]
                         delta = choice.get("delta", {})
                         content = delta.get("content", "")
                         tool_calls_delta = delta.get("tool_calls", [])

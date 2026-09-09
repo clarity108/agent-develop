@@ -236,6 +236,15 @@ class LLMPlanner:
 
         resp = self._client.chat(messages, tools=tool_defs)
 
+        if resp.error and tool_defs:
+            resp = self._client.chat(messages, tools=None)
+            if resp.error:
+                return Decision(
+                    thought=f"LLM error: {resp.error}",
+                    action="answer",
+                    answer=f"Sorry, I encountered an error: {resp.error}",
+                )
+
         if resp.error:
             return Decision(
                 thought=f"LLM error: {resp.error}",
@@ -281,6 +290,23 @@ class LLMPlanner:
                     tool_calls = chunk.tool_calls
                 if chunk.done:
                     break
+
+        if error and tool_defs:
+            full_content = ""
+            tool_calls = []
+            error = None
+            for chunk in self._client.stream_chat(messages, tools=None):
+                if isinstance(chunk, ChatResponse):
+                    error = chunk.error
+                    break
+                if isinstance(chunk, StreamChunk):
+                    if chunk.content:
+                        full_content += chunk.content
+                        on_token(chunk.content)
+                    if chunk.tool_calls:
+                        tool_calls = chunk.tool_calls
+                    if chunk.done:
+                        break
 
         if error:
             return Decision(
