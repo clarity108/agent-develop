@@ -20,6 +20,7 @@
   --success:      #4ade80;
   --success-bg:   rgba(74, 222, 128, 0.06);
   --warning:      #fbbf24;
+  --warning-bg:   rgba(251, 191, 36, 0.06);
   --error:        #f87171;
   --error-bg:     rgba(248, 113, 113, 0.06);
   --info:         #60a5fa;
@@ -1355,6 +1356,58 @@ html, body {
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+.trace-cache-indicator {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s2) var(--s3);
+  margin: var(--s1) 0;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--r-md);
+  background: var(--accent-subtle);
+  font-size: 11px;
+  color: var(--accent);
+  animation: fade-slide 0.3s ease-out;
+}
+
+.cache-icon {
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.cache-text {
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.trace-recovery-indicator {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s2) var(--s3);
+  margin: var(--s1) 0;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--warning);
+  border-radius: var(--r-md);
+  background: var(--warning-bg);
+  font-size: 11px;
+  color: var(--warning);
+  animation: fade-slide 0.3s ease-out;
+}
+
+.recovery-icon {
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.recovery-text {
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 10px;
 }
 
 /* Undo indicator */

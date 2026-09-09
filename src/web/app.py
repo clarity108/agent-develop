@@ -301,6 +301,22 @@ def _run_agent_in_thread(run: AgentRun, use_llm: bool = True, conversation_id: s
                     "max_attempts": max_attempts,
                     "error": error,
                 })
+            elif event == "tool_cache_hit":
+                tool_name, result = args
+                run.emit("tool_cache_hit", {
+                    "step": step,
+                    "tool_name": tool_name,
+                    "success": result.success,
+                    "output": result.output[:200] if result.output else "",
+                })
+            elif event == "tool_recovery":
+                tool_name, action, new_args = args
+                run.emit("tool_recovery", {
+                    "step": step,
+                    "tool_name": tool_name,
+                    "action": action,
+                    "new_args": new_args,
+                })
             elif event == "error":
                 run.emit("step_error", {"step": step, "error": args[0]})
 

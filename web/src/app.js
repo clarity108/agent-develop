@@ -422,6 +422,34 @@
         return;
       }
 
+      if (msg.type === "tool_cache_hit") {
+        var elCH = document.querySelector('[data-step="' + msg.data.step + '"]');
+        if (elCH) {
+          var cacheEl = document.createElement("div");
+          cacheEl.className = "trace-cache-indicator";
+          cacheEl.innerHTML =
+            '<span class="cache-icon">⚡</span>' +
+            '<span class="cache-text">cache hit · ' + esc(msg.data.tool_name) + '</span>';
+          elCH.appendChild(cacheEl);
+          $("#trace").scrollTop = $("#trace").scrollHeight;
+        }
+        return;
+      }
+
+      if (msg.type === "tool_recovery") {
+        var elRC = document.querySelector('[data-step="' + msg.data.step + '"]');
+        if (elRC) {
+          var recEl = document.createElement("div");
+          recEl.className = "trace-recovery-indicator";
+          recEl.innerHTML =
+            '<span class="recovery-icon">🔧</span>' +
+            '<span class="recovery-text">recovered · ' + esc(msg.data.action) + '</span>';
+          elRC.appendChild(recEl);
+          $("#trace").scrollTop = $("#trace").scrollHeight;
+        }
+        return;
+      }
+
       if (msg.type === "plan_update") {
         renderPlan(msg.data);
         return;
